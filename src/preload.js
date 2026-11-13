@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('farm', {
   discordSet: (url) => ipcRenderer.invoke('discord-set', url),
   discordTest: (url) => ipcRenderer.invoke('discord-test', url),
   discordPrefs: (o) => ipcRenderer.invoke('discord-prefs', o),
+  discordConnect: () => ipcRenderer.invoke('discord-connect'),
   discordItems: (on) => ipcRenderer.invoke('discord-items', on),
   toggleWatchdog: () => ipcRenderer.send('toggle-watchdog'),
   on: (channel, fn) => {

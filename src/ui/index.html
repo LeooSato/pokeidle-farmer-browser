@@ -164,14 +164,14 @@
         </div>
         <div id="ph-msg" class="mgr-msg"></div>
         <div class="ph-grid">
-          <label class="ph-field"><span>Marcar você <small>@everyone ou seu ID do Discord</small></span>
-            <input id="ph-uid" type="text" inputmode="numeric" placeholder="@everyone ou 312345678901234567" spellcheck="false" autocomplete="off">
+          <label class="ph-field"><span>Marcar você <small id="ph-who">conecte o Discord ou cole o ID</small></span>
+            <span class="ph-uid-row"><input id="ph-uid" type="text" inputmode="numeric" placeholder="ID do Discord" spellcheck="false" autocomplete="off"><button id="ph-connect" type="button" class="action ph-discord">Conectar Discord</button></span>
           </label>
           <label class="ph-field"><span>Avisar a partir da nota <small>pokémon com nota maior ou igual</small></span>
             <input id="ph-min" type="number" min="0" max="10" step="0.1" value="3">
           </label>
         </div>
-        <p class="hint">Num servidor só seu, <b>@everyone</b> já marca você. Pra marcar só você pelo ID: Discord › Configurações › Avançado › ligue o Modo desenvolvedor, depois clique com o botão direito no seu nome › Copiar ID do usuário. Não precisa vincular conta nem senha.</p>
+        <p class="hint">Clique em <b>Conectar Discord</b>, faça login e autorize: o app pega só o seu ID pra te marcar. Não guarda senha nem token.</p>
         <label class="mgr-opt">
           <input id="ph-items" type="checkbox">
           <span class="switch"></span>

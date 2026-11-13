@@ -145,6 +145,7 @@
     $('#ph-url').placeholder = d.set ? `Configurado (${d.label}). Cole outro link pra trocar.` : 'https://discord.com/api/webhooks/…';
     $('#ph-items').checked = d.items;
     $('#ph-uid').value = d.userId;
+    $('#ph-who').textContent = d.userName ? `conectado como ${d.userName}` : 'conecte o Discord ou cole o ID';
     $('#ph-min').value = d.minScore;
     $('#ph-save').textContent = d.set ? 'Trocar' : 'Salvar';
     phSay(d.set ? '<span class="dim">Ativo. Deixe o campo vazio e clique em Remover pra desligar.</span>' : '');
@@ -169,6 +170,14 @@
     if (!r.ok) phSay(esc(r.error), 'err'); else phSay('Preferências salvas.', 'ok');
   }
   $('#ph-uid').addEventListener('change', phPrefs);
+  $('#ph-connect').addEventListener('click', async () => {
+    phSay('Faça login na janela do Discord e clique em Autorizar…');
+    const r = await window.farm.discordConnect();
+    if (!r || !r.ok) return phSay(esc((r && r.error) || 'Falhou.'), 'err');
+    $('#ph-uid').value = r.userId;
+    $('#ph-who').textContent = `conectado como ${r.name}`;
+    phSay(`Pronto! Vou marcar <b>${esc(r.name)}</b> nos alertas.`, 'ok');
+  });
   $('#ph-min').addEventListener('change', phPrefs);
   $('#ph-items').addEventListener('change', (e) => window.farm.discordItems(e.target.checked));
 

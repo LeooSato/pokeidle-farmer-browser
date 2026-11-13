@@ -469,6 +469,54 @@ async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, im
     return { ok: false, error: 'sem conexão com o Discord' };
   }
 }
+// "Conectar Discord": OAuth2 implicit grant (só scope identify, sem client secret no app).
+// Abre o login numa janela com sessão temporária, lê o token do redirect, pega só o ID e descarta o token.
+const DISCORD_CLIENT_ID = '1570904100856537108';
+const DISCORD_REDIRECT = 'http://127.0.0.1:53682/discord';
+let discordAuthWin = null;
+function discordConnect() {
+  if (discordAuthWin && !discordAuthWin.isDestroyed()) { discordAuthWin.focus(); return Promise.resolve({ ok: false, error: 'A janela de login já está aberta.' }); }
+  const nonce = require('crypto').randomBytes(16).toString('hex');
+  const authUrl = 'https://discord.com/oauth2/authorize?' + new URLSearchParams({ client_id: DISCORD_CLIENT_ID, response_type: 'token', scope: 'identify', redirect_uri: DISCORD_REDIRECT, state: nonce, prompt: 'consent' });
+  return new Promise((resolve) => {
+    let done = false;
+    const w = discordAuthWin = new BrowserWindow({
+      width: 520, height: 760, parent: win, modal: false, autoHideMenuBar: true, title: 'Conectar Discord',
+      backgroundColor: '#313338', icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+      webPreferences: { partition: 'discord-auth', contextIsolation: true, sandbox: true, nodeIntegration: false }
+    });
+    const finish = (r) => { if (done) return; done = true; resolve(r); if (!w.isDestroyed()) w.close(); };
+    const onNav = async (e, url) => {
+      if (!url.startsWith(DISCORD_REDIRECT)) return;
+      e.preventDefault();
+      const u = new URL(url);
+      const q = new URLSearchParams(u.hash.slice(1) || u.search.slice(1));
+      if (q.get('error')) return finish({ ok: false, error: q.get('error') === 'access_denied' ? 'Você cancelou a autorização.' : 'O Discord recusou o login.' });
+      if (q.get('state') !== nonce || !q.get('access_token')) return finish({ ok: false, error: 'Resposta inválida do Discord.' });
+      try {
+        const res = await net.fetch('https://discord.com/api/v10/users/@me', { headers: { authorization: `Bearer ${q.get('access_token')}` } });
+        const me = res.ok ? await res.json() : null;
+        if (!me || !DISCORD_ID_RE.test(String(me.id))) return finish({ ok: false, error: 'Não consegui ler sua conta do Discord.' });
+        state.discordUserId = String(me.id);
+        state.discordUserName = String(me.global_name || me.username || '').slice(0, 40);
+        saveState();
+        log('[celular] Discord conectado');
+        finish({ ok: true, userId: state.discordUserId, name: state.discordUserName });
+      } catch {
+        finish({ ok: false, error: 'Sem conexão com o Discord.' });
+      }
+    };
+    w.webContents.on('will-redirect', onNav);
+    w.webContents.on('will-navigate', onNav);
+    w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    w.on('closed', () => {
+      discordAuthWin = null;
+      session.fromPartition('discord-auth').clearStorageData().catch(() => {});
+      finish({ ok: false, error: 'Janela fechada antes de terminar.' });
+    });
+    w.loadURL(authUrl);
+  });
+}
 function maskWebhook(url) {
   const m = url && url.match(/webhooks\/(\d+)\//);
   return m ? `webhook …${m[1].slice(-4)}` : null;
@@ -1076,13 +1124,14 @@ function registerIpc() {
     watchdogPaused
   }));
 
-  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: /^(everyone|here)$/.test(state.discordUserId || '') ? '@' + state.discordUserId : state.discordUserId || '', minScore: state.captureMinScore ?? 3 }));
+  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: /^(everyone|here)$/.test(state.discordUserId || '') ? '@' + state.discordUserId : state.discordUserId || '', userName: state.discordUserName || '', minScore: state.captureMinScore ?? 3 }));
   handle('discord-prefs', (_e, o = {}) => {
     const raw = String(o.userId || '').trim().toLowerCase();
     const id = /^@?(everyone|here)$/.test(raw) ? raw.replace('@', '') : raw.replace(/[^\d]/g, '');
     if (raw && !id) return { ok: false, error: 'Use seu ID do Discord (só números) ou @everyone. O nome de usuário não dá pra marcar por webhook.' };
     if (id && !/^(everyone|here)$/.test(id) && !DISCORD_ID_RE.test(id)) return { ok: false, error: 'O ID do Discord tem de 17 a 20 números.' };
     const min = Number(o.minScore);
+    if (id !== state.discordUserId) state.discordUserName = undefined;
     state.discordUserId = id || undefined;
     if (Number.isFinite(min)) state.captureMinScore = Math.max(0, Math.min(10, min));
     saveState();
@@ -1095,6 +1144,7 @@ function registerIpc() {
     log(`[celular] webhook ${url ? 'configurado' : 'removido'}`);
     return { ok: true, label: maskWebhook(url) };
   });
+  handle('discord-connect', () => discordConnect());
   handle('discord-items', (_e, on) => { state.discordItems = !!on; saveState(); return true; });
   handle('discord-test', (_e, url) => {
     url = String(url || '').trim() || state.discordWebhook;

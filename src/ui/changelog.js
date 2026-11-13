@@ -1,6 +1,13 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.8',
+    date: '13/11/2026',
+    items: [
+      'Botão "Conectar Discord" em Lives › Alertas no celular: faça login e autorize, e o app já pega seu ID pra te marcar nos alertas. Sem modo desenvolvedor e sem guardar senha ou token.'
+    ]
+  },
+  {
     version: '1.0.7',
     date: '13/11/2026',
     items: [

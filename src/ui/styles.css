@@ -482,3 +482,7 @@ kbd { font: 600 10.5px/1 ui-monospace, Consolas, monospace; padding: 2px 5px; bo
 .ph-field small { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .ph-field input { height: 34px; padding: 0 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: inherit; outline: none; user-select: text; }
 .ph-field input:focus { border-color: #5865f2; box-shadow: 0 0 0 3px rgba(88, 101, 242, .2); }
+.ph-uid-row { display: flex; gap: 6px; }
+.ph-uid-row input { flex: 1; min-width: 0; }
+.action.ph-discord { background: #5865f2; border-color: #5865f2; color: #fff; white-space: nowrap; height: 34px; }
+.action.ph-discord:hover { filter: brightness(1.1); }
