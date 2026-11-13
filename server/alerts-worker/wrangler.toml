@@ -13,7 +13,7 @@ CHANNEL_ID = ""
 # Mapa "id do usuário -> id da thread". O workflow deploy-worker.yml cria e preenche o id sozinho.
 [[kv_namespaces]]
 binding = "THREADS"
-id = "PREENCHER"
+id = "ac48c8344b684078977dbe7004b7536e"
 
 # Segredos (nunca no repositório), definidos com `npx wrangler secret put <NOME>`:
 #   CLIENT_SECRET  - OAuth2 > Client Secret

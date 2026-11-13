@@ -55,7 +55,7 @@ jobs:
               "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces" | jq -r '.result.id')
             echo "KV criado"
           fi
-          sed -i "s/^id = \"PREENCHER\"/id = \"$ID\"/" wrangler.toml
+          sed -i -E "s/^id = \"[^\"]*\"/id = \"$ID\"/" wrangler.toml
           grep -q "id = \"$ID\"" wrangler.toml
 
       - name: Deploy
