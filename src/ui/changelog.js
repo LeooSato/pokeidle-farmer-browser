@@ -1,6 +1,11 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.9',
+    date: '13/11/2026',
+    items: ['A versão do app agora aparece na barra superior, do lado do nome. Clique nela pra ver as novidades.']
+  },
+  {
     version: '1.0.8',
     date: '13/11/2026',
     items: [

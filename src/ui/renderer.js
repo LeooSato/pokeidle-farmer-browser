@@ -325,7 +325,8 @@ function startUptime(startedAt) {
 async function init() {
   const setup = await window.farm.getSetup();
   split = setup.split;
-  $('.brand-name').title = `PokeIdle Farm v${setup.version || ''}`;
+  $('.brand-name').title = `PokeIdle Farm v${setup.version || ''} · clique pra ver as novidades`;
+  $('#app-ver').textContent = setup.version ? `v${setup.version}` : '';
 
   $('#left').append(buildPanel(setup.game, 'game'));
   resizeObs = new ResizeObserver(sendLayout);
