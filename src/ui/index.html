@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>PokeIdle Farm</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand">
+      <svg class="pokeball" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" fill="#f4f4f5"/>
+        <path d="M2 16a14 14 0 0 1 28 0z" fill="#e3350d"/>
+        <circle cx="16" cy="16" r="14" fill="none" stroke="#0b0e14" stroke-width="2.4"/>
+        <rect x="2" y="14.8" width="28" height="2.4" fill="#0b0e14"/>
+        <circle cx="16" cy="16" r="4.6" fill="#0b0e14"/>
+        <circle cx="16" cy="16" r="2.6" fill="#ffcb05"/>
+      </svg>
+      <span class="brand-name">PokeIdle <b>Farm</b></span>
+      <span class="pill pill-on" title="Throttling de segundo plano desativado e suspensão bloqueada"><i></i>sempre ativo</span>
+    </div>
+    <div id="toast" class="toast" hidden><i></i><b></b><span></span></div>
+    <div class="actions">
+      <button id="btn-focus" class="action" title="Modo foco: só o jogo na tela, lives rodando escondidas (Ctrl+Shift+F)">
+        <svg viewBox="0 0 16 16"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg><span>Foco</span>
+      </button>
+      <button id="btn-eco" class="action" title="Modo economia: lives minimizadas (não desenham na tela) e na menor qualidade. Continuam contando.">
+        <svg viewBox="0 0 16 16"><path d="M3 13c0-6 4-9.5 10.5-10-.3 6.6-3.8 10.5-10.5 10zM3 13l5.5-5.5"/></svg><span>Economia</span>
+      </button>
+      <button id="btn-streams" class="action" title="Adicionar, remover e reordenar as lives (Kick e Twitch)">
+        <svg viewBox="0 0 16 16"><rect x="1.8" y="3.5" width="12.4" height="9" rx="2"/><path d="M6.8 6.3v3.4L9.8 8z"/></svg><span>Lives</span>
+      </button>
+      <button id="btn-restart" class="action" title="Reinicia o app inteiro (aplica atualizações e recarrega tudo)">
+        <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.8h-2.8"/></svg><span>Reiniciar</span>
+      </button>
+      <button id="btn-login" class="action" title="Abre o PokeIdle e a Kick em janelas normais pra logar. As lives pausam até você fechar as duas.">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.8"/><path d="M2.8 14a5.2 5.2 0 0 1 10.4 0"/></svg><i class="avatar"></i><span>Login</span>
+      </button>
+      <button id="btn-watchdog" class="action" title="Liga/desliga o recarregamento automático (só quando uma página cai ou trava)">
+        <svg viewBox="0 0 16 16"><path d="M8 1.8l5 2v4c0 3-2.2 5.3-5 6.4-2.8-1.1-5-3.4-5-6.4v-4z"/><path d="M5.8 8l1.6 1.6L10.4 6.6"/></svg><span>Auto-reload <b>ligado</b></span>
+      </button>
+    </div>
+    <div class="window-controls">
+      <button data-win="minimize" title="Minimizar"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button data-win="maximize" title="Maximizar"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1"/></svg></button>
+      <button data-win="close" class="close" title="Fechar (continua na bandeja)"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+    </div>
+  </header>
+
+  <main id="workspace">
+    <section id="left"></section>
+    <div id="divider" title="Arraste para redimensionar"><span></span></div>
+    <section id="right"></section>
+  </main>
+
+  <footer class="statusbar">
+    <span class="stat"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.5V8l2.3 1.6"/></svg>Farmando há <b id="uptime">00:00:00</b></span>
+    <span class="stat"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.8h-2.8"/></svg>Reloads automáticos <b id="reloads">0</b></span>
+    <span class="stat" id="game-stats" title="Lendo os números do PokeIdle…">
+      <svg viewBox="0 0 16 16"><path d="M2 13.5h12M4 11V8M7 11V5M10 11V7M13 11V3"/></svg>
+      XP/h <b id="xp-rate">–</b> · Ouro/h <b id="gold-rate">–</b>
+      <svg id="spark" class="spark" viewBox="0 0 60 16" preserveAspectRatio="none"><polyline points=""/></svg>
+    </span>
+    <span class="stat" id="last-reload" hidden><svg viewBox="0 0 16 16"><path d="M8 2.5v6M8 11.5v.5"/><circle cx="8" cy="8" r="6.2"/></svg>Último: <b></b></span>
+    <span class="spacer"></span>
+    <button class="report-btn" id="btn-report" hidden title="Resumo do dia: XP, ouro, tempo farmando e tempo ao vivo de cada live">
+      <svg viewBox="0 0 16 16"><path d="M3 2.5h7l3 3v8H3z"/><path d="M5.5 11V9M8 11V7M10.5 11V8.5"/></svg>Relatório diário disponível
+    </button>
+    <button class="stat toggle" id="btn-smartaudio" title="Ligado: a live que você clicar por último fica com som e as outras mutam sozinhas">
+      <svg viewBox="0 0 16 16"><path d="M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5"/></svg>Som só na live clicada <b></b>
+    </button>
+    <button class="stat toggle" id="btn-autocollapse" title="Encolhe sozinho o painel da live quando o streamer está offline e abre de novo quando ele entra ao vivo">
+      <svg viewBox="0 0 16 16"><path d="M3 5.5h10M3 10.5h10M6 3l2 2.5L10 3M6 13l2-2.5 2 2.5"/></svg>Minimizar offline <b></b>
+    </button>
+    <span class="stat" id="metrics" title="Uso do app inteiro (todas as páginas juntas)">
+      <svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"/></svg>
+      CPU <b id="cpu">–</b> · RAM <b id="ram">–</b>
+    </span>
+    <span class="stat" id="ext-status"><svg viewBox="0 0 16 16"><path d="M6 2.5h4v2a1.5 1.5 0 1 0 3 0v-2M3 6v7.5h10V6"/></svg><span>carregando extensões…</span></span>
+  </footer>
+
+  <template id="panel-tpl">
+    <article class="panel">
+      <div class="panel-head">
+        <span class="accent"></span>
+        <span class="icon"></span>
+        <span class="title"></span>
+        <span class="chip" data-status="loading"><i></i><em>carregando</em></span>
+        <span class="spacer"></span>
+        <span class="usage" title="CPU e memória desta página"></span>
+        <span class="tools">
+          <button data-local="collapse" class="collapse" title="Minimizar / expandir"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+          <button data-act="zoom-out" title="Diminuir zoom"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M5 7h4M10.5 10.5L14 14"/></svg></button>
+          <button data-act="zoom-in" title="Aumentar zoom"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M5 7h4M7 5v4M10.5 10.5L14 14"/></svg></button>
+          <button data-act="mute" class="mute" title="Ligar/desligar som">
+            <svg class="i-on" viewBox="0 0 16 16"><path d="M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></svg>
+            <svg class="i-off" viewBox="0 0 16 16"><path d="M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 6l3.5 4M14.5 6L11 10"/></svg>
+          </button>
+          <button data-local="shot" class="shot" title="Salvar print do jogo (Ctrl+S)"><svg viewBox="0 0 16 16"><path d="M2 5.5h2.5L6 3.5h4l1.5 2H14v7.5H2z"/><circle cx="8" cy="9" r="2.3"/></svg></button>
+          <button data-act="reload" title="Recarregar (F5)"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.8h-2.8"/></svg></button>
+          <button data-act="external" title="Abrir no navegador"><svg viewBox="0 0 16 16"><path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v4h-9v-9h4"/></svg></button>
+        </span>
+      </div>
+      <div class="viewport">
+        <div class="placeholder"><div class="spinner"></div><span></span></div>
+      </div>
+    </article>
+  </template>
+
+  <div id="manager" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="mgr-title">
+      <header class="sheet-head">
+        <div>
+          <h2 id="mgr-title">Gerenciar lives</h2>
+          <p>Escolha a plataforma e o canal. As lives aparecem na coluna da direita na ordem da lista.</p>
+        </div>
+        <button id="mgr-close" class="icon-btn" title="Fechar (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      </header>
+
+      <section class="mgr-profiles">
+        <h3>Perfis <small>clique pra trocar na hora</small></h3>
+        <div id="mgr-profiles" class="chips"></div>
+        <div class="add-row profile-row">
+          <input id="mgr-profile-name" type="text" placeholder="Salvar a lista abaixo como perfil (ex.: PokeIdle BR)" maxlength="40" spellcheck="false">
+          <button id="mgr-profile-save" class="action">Salvar perfil</button>
+        </div>
+      </section>
+
+      <section class="mgr-add">
+        <div class="pf-cards">
+          <button class="pf-card kick" data-pf="kick"><span class="pf-badge">K</span><b>Kick</b><small>kick.com</small></button>
+          <button class="pf-card twitch" data-pf="twitch"><span class="pf-badge">T</span><b>Twitch</b><small>twitch.tv</small></button>
+        </div>
+        <div class="add-row">
+          <input id="mgr-input" type="text" spellcheck="false" autocomplete="off">
+          <button id="mgr-add" class="action primary">Adicionar</button>
+        </div>
+        <div id="mgr-msg" class="mgr-msg"></div>
+      </section>
+
+      <section class="mgr-list-wrap">
+        <h3>Suas lives <span id="mgr-count" class="count">0</span></h3>
+        <ul id="mgr-list"></ul>
+        <p id="mgr-heavy" class="mgr-heavy" hidden>Muitas lives ao mesmo tempo pesam no PC. Se travar, minimize as offline ou ative o modo leve.</p>
+      </section>
+
+      <label class="mgr-opt">
+        <input id="mgr-claim" type="checkbox">
+        <span class="switch"></span>
+        <span><b>Resgatar baú de pontos da Twitch automaticamente</b><small>Fica numa zona cinza dos termos da Twitch. Desligado por padrão.</small></span>
+      </label>
+
+      <footer class="sheet-foot">
+        <button id="mgr-reset" class="action">Restaurar padrão</button>
+        <span class="spacer"></span>
+        <button id="mgr-cancel" class="action">Cancelar</button>
+        <button id="mgr-save" class="action primary">Salvar</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="report" class="modal" hidden>
+    <div class="sheet report-sheet" role="dialog" aria-labelledby="rep-title">
+      <header class="sheet-head">
+        <div>
+          <h2 id="rep-title">Relatório diário</h2>
+          <p id="rep-sub"></p>
+        </div>
+        <button id="rep-close" class="icon-btn" title="Fechar (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      </header>
+      <div class="kpis">
+        <div class="kpi"><small>XP ganho</small><b id="rep-xp">–</b><span id="rep-xph"></span></div>
+        <div class="kpi gold"><small>Ouro ganho</small><b id="rep-gold">–</b><span id="rep-goldh"></span></div>
+        <div class="kpi"><small>Tempo farmando</small><b id="rep-time">–</b><span id="rep-level"></span></div>
+      </div>
+      <section>
+        <h3>Tempo ao vivo de cada live hoje</h3>
+        <ul id="rep-lives" class="bars"></ul>
+      </section>
+      <section>
+        <h3>Últimos 7 dias</h3>
+        <table class="days"><thead><tr><th>Dia</th><th>XP</th><th>Ouro</th><th>Farmando</th></tr></thead><tbody id="rep-days"></tbody></table>
+      </section>
+    </div>
+  </div>
+
+  <script src="manager.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

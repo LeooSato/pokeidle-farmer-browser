@@ -1,0 +1,24 @@
+# Gera o instalador e a versão portátil no Windows e publica no GitHub Releases.
+# Como usar: suba a versão no package.json e crie a tag (ex.: git tag v1.0.1 && git push --tags).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

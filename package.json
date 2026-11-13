@@ -1,0 +1,80 @@
+{
+  "name": "pokeidle-farm",
+  "productName": "PokeIdle Farm",
+  "version": "1.0.0",
+  "description": "Navegador dividido: PokeIdle à esquerda e lives da Kick/Twitch à direita, sem suspender nada em segundo plano.",
+  "main": "src/main.js",
+  "private": true,
+  "author": "PokeIdle Farm",
+  "repository": "github:LeooSato/pokeidle-farmer-browser",
+  "scripts": {
+    "start": "electron .",
+    "login": "electron . --login",
+    "dist": "electron-builder --win nsis portable --publish never",
+    "release": "electron-builder --win nsis portable --publish always"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.3.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "local.pokeidle.farm",
+    "productName": "PokeIdle Farm",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "config.json",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "extensions",
+        "to": "extensions",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PokeIdle Farm",
+      "installerLanguages": [
+        "pt_BR"
+      ],
+      "language": "1046",
+      "artifactName": "PokeIdle-Farm-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "PokeIdle-Farm-Portatil-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    }
+  }
+}

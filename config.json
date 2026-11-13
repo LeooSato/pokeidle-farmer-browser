@@ -1,0 +1,47 @@
+{
+  "game": {
+    "title": "PokeIdle",
+    "url": "https://pokeidle.io/app",
+    "zoom": 1.0
+  },
+  "streams": [
+    {
+      "id": "axt",
+      "title": "axt",
+      "url": "https://kick.com/axt"
+    },
+    {
+      "id": "yetz",
+      "title": "yetz",
+      "url": "https://kick.com/yetz"
+    },
+    {
+      "id": "denissnider",
+      "title": "denissnider",
+      "url": "https://kick.com/denissnider"
+    }
+  ],
+  "layout": {
+    "split": 60
+  },
+  "streamsMutedByDefault": true,
+  "lowestQuality": true,
+  "kickPlayerOnly": false,
+  "watchdog": {
+    "enabled": true,
+    "intervalSeconds": 60,
+    "stalledChecksBeforeReload": 0,
+    "preventiveReloadHours": 0
+  },
+  "extensions": [
+    {
+      "id": "mhnplloljgchpfpcpbhmcokmnefodjnh",
+      "name": "/hunt for PokeIdle"
+    },
+    {
+      "id": "kmplpmmfkijglfbffijmcofpjmkgegha",
+      "name": "Rate for PokeIdle"
+    }
+  ],
+  "closeToTray": true
+}
