@@ -1,6 +1,14 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.5',
+    date: '13/11/2026',
+    items: [
+      'Potions no rodapé: mostra a potion que você mais tem (passe o mouse pra ver todas).',
+      'Aviso quando uma potion que você tinha fica abaixo de 100 ou zera, e quando todas do uso automático acabam.'
+    ]
+  },
+  {
     version: '1.0.4',
     date: '13/11/2026',
     items: [

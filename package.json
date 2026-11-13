@@ -1,7 +1,7 @@
 {
   "name": "pokeidle-farm",
   "productName": "PokeIdle Farm",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Navegador dividido: PokeIdle à esquerda e lives da Kick/Twitch à direita, sem suspender nada em segundo plano.",
   "main": "src/main.js",
   "private": true,

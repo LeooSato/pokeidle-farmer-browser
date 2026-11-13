@@ -141,21 +141,32 @@ const lowestQualityFor = (platform) => (platform === 'twitch' ? `(() => {
 
 const probeFor = (platform) => (platform === 'twitch' ? twitchProbe : kickProbe);
 
-// Pokébolas do PokeIdle: botões em #caidos-bolas com título "Ultra Ball — você tem 21.623".
-const gameBalls = `(() => {
-  const box = document.getElementById('caidos-bolas');
-  if (!box) return null;
-  return [...box.querySelectorAll('.caidos-bola')].map((b) => {
-    const t = b.getAttribute('title') || '';
-    const m = t.match(/^(.*?)\\s*[—–]\\s*.*?([\\d.,]+)\\s*$/);
-    const img = b.querySelector('img');
-    return {
-      name: m ? m[1].trim() : t.trim(),
-      qty: m ? Number(m[2].replace(/[.,]/g, '')) : null,
-      on: b.classList.contains('on'),
-      img: img ? img.getAttribute('src') : null
-    };
-  }).filter((x) => x.name);
+// Itens do PokeIdle (painel Automações): chips com nome no title ("Ultra Ball — eficiência ×4",
+// "Golden Potion"), quantidade em .q, "on" = ligado no uso automático, "vazio" = acabou.
+// Pokébolas: #auto-ball-opts (se não existir, usa #caidos-bolas, "Ultra Ball — você tem 21.623").
+const gameItems = `(() => {
+  const chips = (id) => {
+    const box = document.getElementById(id);
+    if (!box) return null;
+    return [...box.querySelectorAll('.auto-chip')].map((b) => {
+      const name = (b.getAttribute('title') || '').split(/\\s+[—–]\\s+/)[0].trim();
+      const q = b.querySelector('.q');
+      const n = q ? Number((q.textContent || '').replace(/[^\\d]/g, '')) : NaN;
+      const img = b.querySelector('img');
+      return { name, qty: Number.isFinite(n) ? n : null, on: b.classList.contains('on'), img: img ? img.getAttribute('src') : null };
+    }).filter((x) => x.name);
+  };
+  let balls = chips('auto-ball-opts');
+  if (!balls) {
+    const box = document.getElementById('caidos-bolas');
+    balls = box ? [...box.querySelectorAll('.caidos-bola')].map((b) => {
+      const t = b.getAttribute('title') || '';
+      const m = t.match(/^(.*?)\\s+[—–]\\s+.*?([\\d.,]+)\\s*$/);
+      const img = b.querySelector('img');
+      return { name: m ? m[1].trim() : t.trim(), qty: m ? Number(m[2].replace(/[.,]/g, '')) : null, on: b.classList.contains('on'), img: img ? img.getAttribute('src') : null };
+    }).filter((x) => x.name) : null;
+  }
+  return { balls, potions: chips('auto-potion-opts'), revives: chips('auto-revive-opts') };
 })()`;
 
-module.exports = { gameBalls, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+module.exports = { gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

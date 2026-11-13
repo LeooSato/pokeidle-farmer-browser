@@ -466,3 +466,5 @@ kbd { font: 600 10.5px/1 ui-monospace, Consolas, monospace; padding: 2px 5px; bo
 /* Pokébolas no rodapé */
 #balls img { width: 14px; height: 14px; object-fit: contain; }
 #balls.warn b { color: var(--warn); }
+#potions img { width: 14px; height: 14px; object-fit: contain; }
+#potions.warn b { color: var(--warn); }

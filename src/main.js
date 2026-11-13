@@ -407,28 +407,32 @@ async function sampleGameStats() {
     xpGained: stats.xpGained, goldGained: stats.goldGained,
     xpRate: rate('xp'), goldRate: rate('gold'), spark
   };
-  stats.last.balls = await readBalls(p);
+  const items = await readItems(p);
+  stats.last.balls = items && items.balls;
+  stats.last.potions = items && items.potions;
   send('game-stats', stats.last);
   trackDaily(stats.xpGained - before.xp, stats.goldGained - before.gold, now);
   checkIdle(r, stats.xpGained - before.xp, now);
 }
 
 // ---------------------------------------------------------------------------
-// Pokébolas: avisa quando um tipo zera, fica abaixo do limite ou todas somem da tela.
+// Pokébolas e potions: avisa só quando muda (um item que você tinha fica abaixo de 100 ou zera,
+// ou todos os ligados no uso automático zeram). O que já estava zerado ao abrir não gera aviso.
 // ---------------------------------------------------------------------------
-async function readBalls(p) {
-  if (!kick.gameBalls) return null;
-  let balls;
-  try { balls = await p.view.webContents.executeJavaScript(kick.gameBalls, true); } catch { return null; }
-  if (!Array.isArray(balls)) return null;
-  checkBalls(balls);
-  return balls;
+async function readItems(p) {
+  if (!kick.gameItems) return null;
+  let r;
+  try { r = await p.view.webContents.executeJavaScript(kick.gameItems, true); } catch { return null; }
+  if (!r) return null;
+  if (Array.isArray(r.balls)) checkItems('ball', r.balls, { all: 'Pokébolas acabaram', allBody: 'Todas as pokébolas ligadas no automático estão zeradas. Compre mais na loja.', body: 'Compre mais na loja pra continuar capturando.', limit: state.ballsLow ?? 100 });
+  if (Array.isArray(r.potions)) checkItems('potion', r.potions, { all: 'Potions acabaram', allBody: 'Todas as potions do uso automático estão zeradas.', body: 'Compre mais potions pra equipe não desmaiar.', limit: state.potionsLow ?? 100 });
+  return r;
 }
-function ballAlert(key, title, body) {
-  stats.ballAlerts = stats.ballAlerts || {};
-  if (stats.ballAlerts[key]) return;
-  stats.ballAlerts[key] = true;
-  log(`[pokébolas] ${title}`);
+function itemAlert(key, title, body) {
+  stats.itemAlerts = stats.itemAlerts || {};
+  if (stats.itemAlerts[key]) return;
+  stats.itemAlerts[key] = true;
+  log(`[itens] ${title}`);
   send('toast', { title, body, platform: 'warn' });
   if (Notification.isSupported()) {
     const n = new Notification({ title: `PokeIdle: ${title}`, body, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
@@ -436,21 +440,24 @@ function ballAlert(key, title, body) {
     n.show();
   }
 }
-function checkBalls(balls) {
-  const limit = state.ballsLow ?? 100;
-  stats.ballAlerts = stats.ballAlerts || {};
-  if (balls.length) {
-    stats.sawBalls = true; stats.noBalls = 0; delete stats.ballAlerts.none;
-  } else if (stats.sawBalls && ++stats.noBalls >= 3) {
-    ballAlert('none', 'Pokébolas acabaram?', 'Nenhuma pokébola aparece mais na tela de captura. Compre mais na loja.');
+function checkItems(kind, list, o) {
+  stats.itemAlerts = stats.itemAlerts || {};
+  stats.itemPrev = stats.itemPrev || {};
+  const prev = stats.itemPrev[kind] || {};
+  for (const x of list) {
+    if (x.qty === null) continue;
+    const before = prev[x.name];
+    const k0 = `${kind}:zero:${x.name}`, kl = `${kind}:low:${x.name}`;
+    if (x.qty === 0) { if (before > 0) itemAlert(k0, `${x.name} acabou`, o.body); }
+    else if (x.qty < o.limit) { delete stats.itemAlerts[k0]; if (before === undefined || before > x.qty) itemAlert(kl, `${x.name} acabando (${x.qty})`, `Restam ${x.qty}. ${o.body}`); }
+    else { delete stats.itemAlerts[k0]; delete stats.itemAlerts[kl]; }
   }
-  for (const b of balls) {
-    if (b.qty === null) continue;
-    const k0 = `zero:${b.name}`, kl = `low:${b.name}`;
-    if (b.qty === 0) ballAlert(k0, `${b.name} acabou`, 'Compre mais na loja pra continuar capturando.');
-    else if (b.qty < limit) { delete stats.ballAlerts[k0]; ballAlert(kl, `${b.name} acabando (${b.qty})`, `Restam ${b.qty}. Compre mais na loja.`); }
-    else { delete stats.ballAlerts[k0]; delete stats.ballAlerts[kl]; }
-  }
+  const enabled = list.filter((x) => x.on);
+  const hadAny = enabled.some((x) => prev[x.name] > 0);
+  const allZero = enabled.length && enabled.every((x) => x.qty === 0);
+  if (allZero && hadAny) itemAlert(`${kind}:all`, o.all, o.allBody);
+  else if (!allZero) delete stats.itemAlerts[`${kind}:all`];
+  stats.itemPrev[kind] = Object.fromEntries(list.map((x) => [x.name, x.qty]));
 }
 
 // ---------------------------------------------------------------------------
