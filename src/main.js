@@ -432,15 +432,29 @@ async function readItems(p) {
 // O link do webhook fica só no state.json local; nunca vai pro log nem pro repositório.
 const DISCORD_RE = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,25}\/[\w-]{20,100}$/;
 let discordLastSend = 0;
-async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, url = state.discordWebhook }) {
+const DISCORD_ID_RE = /^\d{17,20}$/;
+async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, image, fields, mention = false, url = state.discordWebhook }) {
   if (!url || !DISCORD_RE.test(url)) return { ok: false, error: 'sem webhook' };
   const embed = { title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, timestamp: new Date().toISOString(), footer: { text: 'PokeIdle Farm' } };
   if (thumbnail && /^https:\/\//.test(thumbnail)) embed.thumbnail = { url: thumbnail };
+  if (Array.isArray(fields)) embed.fields = fields.slice(0, 25).map((f) => ({ name: String(f.name).slice(0, 256), value: String(f.value).slice(0, 1024), inline: f.inline !== false }));
+  const uid = mention && DISCORD_ID_RE.test(state.discordUserId || '') ? state.discordUserId : null;
   const wait = discordLastSend + 1500 - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   discordLastSend = Date.now();
   try {
-    const res = await net.fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }) });
+    const payload = { content: uid ? `<@${uid}>` : undefined, embeds: [embed], allowed_mentions: { parse: [], users: uid ? [uid] : [] } };
+    const png = typeof image === 'string' && image.startsWith('data:image/png;base64,') ? Buffer.from(image.slice(22), 'base64') : null;
+    let res;
+    if (png && png.length < 2e6) {
+      embed.thumbnail = { url: 'attachment://pokemon.png' };
+      const form = new FormData();
+      form.append('payload_json', JSON.stringify(payload));
+      form.append('files[0]', new Blob([png], { type: 'image/png' }), 'pokemon.png');
+      res = await net.fetch(url, { method: 'POST', body: form });
+    } else {
+      res = await net.fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    }
     if (res.ok) return { ok: true };
     log(`[celular] Discord respondeu ${res.status}`);
     return { ok: false, error: res.status === 404 || res.status === 401 ? 'webhook inválido ou apagado' : `Discord respondeu ${res.status}` };
@@ -452,6 +466,54 @@ async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, ur
 function maskWebhook(url) {
   const m = url && url.match(/webhooks\/(\d+)\//);
   return m ? `webhook …${m[1].slice(-4)}` : null;
+}
+// ---------- Capturas boas ----------
+// Lê o painel "Capturas" do jogo a cada 10s. Na primeira leitura só memoriza o que já estava lá,
+// depois avisa (PC + Discord) quando aparece captura nova com nota >= mínimo ou shiny.
+const capSeen = new Set();
+let capReady = false;
+let capBusy = false;
+const fmtN = (n, d = 2) => (n == null ? '?' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d }));
+async function checkCaptures() {
+  const p = panels.get('game');
+  if (capBusy || !p || p.view.webContents.isLoading() || !kick.gameCaptures) return;
+  capBusy = true;
+  try {
+    let list;
+    try { list = await p.view.webContents.executeJavaScript(kick.gameCaptures(false), true); } catch { return; }
+    if (!Array.isArray(list)) return;
+    const fresh = list.filter((c) => !capSeen.has(c.k));
+    fresh.forEach((c) => capSeen.add(c.k));
+    if (!capReady) { capReady = true; return; }
+    const min = Number(state.captureMinScore ?? 3);
+    const hits = fresh.filter((c) => c.shiny || (c.nota != null && c.nota >= min));
+    if (!hits.length) return;
+    let withImg = [];
+    if (state.discordWebhook) {
+      try { withImg = await p.view.webContents.executeJavaScript(kick.gameCaptures(true), true) || []; } catch { withImg = []; }
+    }
+    for (const c of hits.slice(0, 5)) await captureAlert(c, (withImg.find((x) => x.k === c.k) || {}).img);
+  } finally { capBusy = false; }
+}
+async function captureAlert(c, img) {
+  const head = `${c.shiny ? '✨ Shiny ' : ''}${c.name}${c.level ? ` Nv ${c.level}` : ''}`;
+  const line = `Nota ${fmtN(c.nota, 3)}/10 · IV ${c.iv ?? '?'}${c.ivMax ? '/' + c.ivMax : ''} · Q ${fmtN(c.q, 3)} · ${c.pot || 'P?'}`;
+  log(`[captura] ${head} — ${line}`);
+  send('toast', { title: `Pokémon bom: ${head}`, body: line, platform: 'ok' });
+  if (Notification.isSupported()) {
+    const n = new Notification({ title: `PokeIdle: ${head}`, body: line, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
+    n.on('click', () => { win.show(); win.focus(); });
+    n.show();
+  }
+  const fields = [
+    { name: 'Nota', value: `**${fmtN(c.nota, 3)}** / 10` },
+    { name: 'IV', value: `${c.iv ?? '?'}${c.ivMax ? ' / ' + c.ivMax : ''}${c.ivPct != null ? ` (${c.ivPct}%)` : ''}` },
+    { name: 'Qualidade', value: `${fmtN(c.q, 3)}${c.qPct != null ? ` (top ${c.qPct}%)` : ''}` },
+    { name: 'Potência', value: `${c.pot || '?'}${c.potTitle ? ` · ${c.potTitle}` : ''}` },
+    { name: 'Nível', value: String(c.level ?? '?') }
+  ];
+  if (c.shiny) fields.push({ name: 'Shiny', value: '✨ Sim' });
+  await notifyPhone({ title: `Capturou ${head}!`, description: c.time ? `Capturado às ${c.time}` : '', color: c.shiny ? 0xffd166 : 0x53fc18, fields, image: img, mention: true });
 }
 function itemAlert(key, title, body) {
   stats.itemAlerts = stats.itemAlerts || {};
@@ -1008,7 +1070,16 @@ function registerIpc() {
     watchdogPaused
   }));
 
-  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false }));
+  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: state.discordUserId || '', minScore: state.captureMinScore ?? 3 }));
+  handle('discord-prefs', (_e, o = {}) => {
+    const id = String(o.userId || '').replace(/[^\d]/g, '');
+    if (id && !DISCORD_ID_RE.test(id)) return { ok: false, error: 'O ID do Discord tem de 17 a 20 números.' };
+    const min = Number(o.minScore);
+    state.discordUserId = id || undefined;
+    if (Number.isFinite(min)) state.captureMinScore = Math.max(0, Math.min(10, min));
+    saveState();
+    return { ok: true };
+  });
   handle('discord-set', (_e, url) => {
     url = String(url || '').trim();
     if (url && !DISCORD_RE.test(url)) return { ok: false, error: 'Isso não parece um link de webhook do Discord.' };
@@ -1020,7 +1091,7 @@ function registerIpc() {
   handle('discord-test', (_e, url) => {
     url = String(url || '').trim() || state.discordWebhook;
     if (!url || !DISCORD_RE.test(url)) return { ok: false, error: 'Cole o link do webhook primeiro.' };
-    return notifyPhone({ url, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui.', color: 0x53fc18 });
+    return notifyPhone({ url, mention: true, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui.', color: 0x53fc18 });
   });
   on('open-login', () => openLoginWindow());
   // Primeiro acesso: "já loguei" ou "prefiro não logar" → mostra o aviso final; depois reinicia.
@@ -1223,6 +1294,7 @@ app.whenReady().then(async () => {
   startAutoUpdate();
   setInterval(pollSleeping, SLEEP_POLL_MS);
   setInterval(sampleGameStats, 30000);
+  setInterval(checkCaptures, 10000);
   setTimeout(sampleGameStats, 15000);
 });
 

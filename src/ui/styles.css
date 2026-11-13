@@ -477,3 +477,8 @@ kbd { font: 600 10.5px/1 ui-monospace, Consolas, monospace; padding: 2px 5px; bo
 .mgr-phone .add-row input:focus { border-color: #5865f2; box-shadow: 0 0 0 3px rgba(88, 101, 242, .2); }
 .mgr-phone .mgr-msg { margin-top: 0; }
 .mgr-phone .mgr-opt input:checked + .switch { background: #5865f2; }
+.ph-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ph-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.ph-field small { color: var(--muted); font-size: 11px; margin-left: 4px; }
+.ph-field input { height: 34px; padding: 0 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: inherit; outline: none; user-select: text; }
+.ph-field input:focus { border-color: #5865f2; box-shadow: 0 0 0 3px rgba(88, 101, 242, .2); }

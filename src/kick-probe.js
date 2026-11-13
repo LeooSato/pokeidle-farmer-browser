@@ -169,4 +169,47 @@ const gameItems = `(() => {
   return { balls, potions: chips('auto-potion-opts'), revives: chips('auto-revive-opts') };
 })()`;
 
-module.exports = { gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+// Capturas recentes do painel "Capturas" (#capturas-painel). Cada linha tem data-k único,
+// nome, nível, selos de potência/IV/qualidade/nota e o sprite num <canvas>.
+// Com sprite=true devolve o sprite ampliado (pixelado) como data URL pra mandar no Discord.
+const gameCaptures = (sprite) => `(() => {
+  const num = (t) => { const m = String(t || '').match(/\\d+(?:[.,]\\d+)?/); return m ? Number(m[0].replace(',', '.')) : null; };
+  const txt = (el, sel) => { const e = el.querySelector(sel); return e ? e.textContent.trim() : ''; };
+  const ttl = (el, sel) => { const e = el.querySelector(sel); return e ? (e.getAttribute('title') || '') : ''; };
+  const rows = [...document.querySelectorAll('#capturas-painel li.capturas-linha[data-k]')];
+  if (!document.getElementById('capturas-painel')) return null;
+  return rows.slice(0, 60).map((li) => {
+    const ivTitle = ttl(li, '.pk-selo-iv');
+    const ivMax = (ivTitle.match(/de\\s+(\\d+)/) || [])[1];
+    const ivPct = (ivTitle.match(/(\\d+)%/) || [])[1];
+    const qTitle = ttl(li, '.pk-selo-q');
+    const qPct = (qTitle.match(/(\\d+)%/) || [])[1];
+    const shiny = /shiny/i.test(li.className) || !!li.querySelector('[class*="shiny"], [title*="Shiny" i]');
+    let img = null;
+    if (${sprite ? 'true' : 'false'}) {
+      try {
+        const c = li.querySelector('.cap-retrato canvas');
+        if (c && c.width) {
+          const k = Math.max(1, Math.floor(160 / c.width));
+          const o = document.createElement('canvas'); o.width = c.width * k; o.height = c.height * k;
+          const g = o.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(c, 0, 0, o.width, o.height);
+          img = o.toDataURL('image/png');
+        }
+      } catch (e) { img = null; }
+    }
+    return {
+      k: li.getAttribute('data-k'),
+      name: txt(li, '.cap-nome'),
+      level: num(txt(li, '.cap-nv')),
+      time: ttl(li, '.cap-hora') || txt(li, '.cap-hora'),
+      pot: txt(li, '.cm-pot'),
+      potTitle: ttl(li, '.cm-pot').split(/\\s+[—–]\\s+/)[1] || '',
+      iv: num(txt(li, '.pk-selo-iv')), ivMax: ivMax ? Number(ivMax) : null, ivPct: ivPct ? Number(ivPct) : null,
+      q: num(txt(li, '.pk-selo-q')), qPct: qPct ? Number(qPct) : null,
+      nota: num(txt(li, '.pk-selo-n')),
+      shiny, img
+    };
+  }).filter((x) => x.k && x.name);
+})()`;
+
+module.exports = { gameCaptures, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

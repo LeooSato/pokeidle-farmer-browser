@@ -144,6 +144,8 @@
     $('#ph-url').value = '';
     $('#ph-url').placeholder = d.set ? `Configurado (${d.label}). Cole outro link pra trocar.` : 'https://discord.com/api/webhooks/…';
     $('#ph-items').checked = d.items;
+    $('#ph-uid').value = d.userId;
+    $('#ph-min').value = d.minScore;
     $('#ph-save').textContent = d.set ? 'Trocar' : 'Salvar';
     phSay(d.set ? '<span class="dim">Ativo. Deixe o campo vazio e clique em Remover pra desligar.</span>' : '');
     window.__phSet = d.set;
@@ -162,6 +164,12 @@
     phSay(r && r.ok ? 'Teste enviado. Olhe o Discord no celular.' : esc((r && r.error) || 'Falhou.'), r && r.ok ? 'ok' : 'err');
   });
   $('#ph-url').addEventListener('input', () => { if (window.__phSet) $('#ph-save').textContent = $('#ph-url').value.trim() ? 'Trocar' : 'Remover'; });
+  async function phPrefs() {
+    const r = await window.farm.discordPrefs({ userId: $('#ph-uid').value.trim(), minScore: $('#ph-min').value });
+    if (!r.ok) phSay(esc(r.error), 'err'); else phSay('Preferências salvas.', 'ok');
+  }
+  $('#ph-uid').addEventListener('change', phPrefs);
+  $('#ph-min').addEventListener('change', phPrefs);
   $('#ph-items').addEventListener('change', (e) => window.farm.discordItems(e.target.checked));
 
   // ---------- Perfis ----------

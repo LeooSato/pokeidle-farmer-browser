@@ -163,6 +163,15 @@
           <button id="ph-save" class="action primary">Salvar</button>
         </div>
         <div id="ph-msg" class="mgr-msg"></div>
+        <div class="ph-grid">
+          <label class="ph-field"><span>Marcar você <small>seu ID do Discord (opcional)</small></span>
+            <input id="ph-uid" type="text" inputmode="numeric" placeholder="ex.: 312345678901234567" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="ph-field"><span>Avisar a partir da nota <small>pokémon com nota maior ou igual</small></span>
+            <input id="ph-min" type="number" min="0" max="10" step="0.1" value="3">
+          </label>
+        </div>
+        <p class="hint">Pra pegar o ID: Discord › Configurações › Avançado › ligue o Modo desenvolvedor, depois clique com o botão direito no seu nome › Copiar ID do usuário. Não precisa vincular conta nem senha.</p>
         <label class="mgr-opt">
           <input id="ph-items" type="checkbox">
           <span class="switch"></span>

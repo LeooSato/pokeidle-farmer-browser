@@ -1,6 +1,15 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.7',
+    date: '13/11/2026',
+    items: [
+      'Aviso de pokémon bom: quando você captura um com nota igual ou acima da mínima (padrão 3) ou shiny, chega no PC e no Discord com sprite, nota, IV, qualidade, potência e nível.',
+      'Marcar você no Discord: cole seu ID do Discord em Lives › Alertas no celular.',
+      'Nota mínima configurável na mesma tela.'
+    ]
+  },
+  {
     version: '1.0.6',
     date: '13/11/2026',
     items: [
