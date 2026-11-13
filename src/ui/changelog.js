@@ -4,7 +4,7 @@ window.CHANGELOG = [
     version: '1.0.1',
     date: '13/11/2026',
     items: [
-      'Tela de boas-vindas na primeira vez que o app abre, explicando como usar.',
+      'Primeiro acesso: PokeIdle, Twitch e Kick lado a lado pra fazer login (ou pular), e depois uma tela de boas-vindas explicando o app.',
       'Aviso de "Novidades" depois de cada atualização, com a lista do que mudou.',
       'Clique no nome PokeIdle Farm, no canto superior esquerdo, pra rever as novidades e a ajuda quando quiser.',
       'Procura atualização a cada 30 minutos (antes era a cada 4 horas).'

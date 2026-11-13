@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('farm', {
   panel: (id, action) => ipcRenderer.send('panel-action', { id, action }),
   window: (action) => ipcRenderer.send('window', action),
   openLogin: () => ipcRenderer.send('open-login'),
+  setupDone: (skipped) => ipcRenderer.send('setup-done', !!skipped),
+  setupRelaunch: () => ipcRenderer.send('setup-relaunch'),
   setEconomy: (on) => ipcRenderer.send('set-economy', on),
   setSmartAudio: (on) => ipcRenderer.send('set-smart-audio', on),
   getReport: () => ipcRenderer.invoke('get-report'),

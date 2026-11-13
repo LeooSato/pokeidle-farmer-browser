@@ -749,6 +749,50 @@ function openLoginWindow() {
   pushGlobal();
 }
 
+// ---------------------------------------------------------------------------
+// Primeiro acesso: uma janela com PokeIdle, Twitch e Kick lado a lado pra fazer login.
+// ---------------------------------------------------------------------------
+let setupWin = null;
+let setupViews = [];
+function openOnboarding() {
+  setupWin = new BrowserWindow({
+    width: 1500, height: 900, minWidth: 1100, minHeight: 640,
+    backgroundColor: '#0b0e14',
+    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    title: 'PokeIdle Farm · Primeiro acesso',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true }
+  });
+  setupWin.on('page-title-updated', (e) => e.preventDefault());
+  setupWin.loadFile(path.join(__dirname, 'ui', 'setup.html'));
+  setupWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  setupWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  setupWin.once('ready-to-show', () => { setupWin.maximize(); setupWin.show(); });
+
+  const sites = [config.game.url, 'https://www.twitch.tv/login', 'https://kick.com'];
+  setupViews = sites.map((url) => {
+    const v = new WebContentsView({ webPreferences: { session: ses, contextIsolation: true, sandbox: true } });
+    v.setBackgroundColor('#0b0e14');
+    v.webContents.setWindowOpenHandler(({ url: u }) => (isWebUrl(u) ? { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 520, height: 720 } } : { action: 'deny' }));
+    v.webContents.on('before-input-event', (e, input) => {
+      if (input.type === 'keyDown' && input.key === 'F5') { e.preventDefault(); v.webContents.reload(); }
+    });
+    setupWin.contentView.addChildView(v);
+    v.webContents.loadURL(url).catch(() => {});
+    return v;
+  });
+  const TOP = 112, BOTTOM = 72, GAP = 10, SIDE = 16; // tem que bater com o setup.html
+  const layout = () => {
+    const [w, h] = setupWin.getContentSize();
+    const colW = Math.floor((w - SIDE * 2 - GAP * 2) / 3);
+    setupViews.forEach((v, i) => v.setBounds({ x: SIDE + i * (colW + GAP), y: TOP, width: colW, height: Math.max(100, h - TOP - BOTTOM) }));
+  };
+  setupWin.on('resize', layout);
+  layout();
+  setupWin.on('closed', () => { setupWin = null; });
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'tray.png')));
   tray.setToolTip('PokeIdle Farm (farmando)');
@@ -777,7 +821,8 @@ function buildTrayMenu() {
 
 function registerIpc() {
   // Só a interface do próprio app (file://.../ui/index.html) pode falar com o processo principal.
-  const trusted = (e) => !!win && !win.isDestroyed() && e.sender === win.webContents;
+  const trusted = (e) => (!!win && !win.isDestroyed() && e.sender === win.webContents)
+    || (!!setupWin && !setupWin.isDestroyed() && e.sender === setupWin.webContents);
   const on = (ch, fn) => ipcMain.on(ch, (e, ...a) => { if (trusted(e)) fn(e, ...a); });
   const handle = (ch, fn) => ipcMain.handle(ch, (e, ...a) => (trusted(e) ? fn(e, ...a) : null));
   handle('get-setup', () => ({
@@ -804,6 +849,20 @@ function registerIpc() {
   }));
 
   on('open-login', () => openLoginWindow());
+  // Primeiro acesso: "já loguei" ou "prefiro não logar" → mostra o aviso final; depois reinicia.
+  on('setup-done', (_e, skipped) => {
+    log(`[setup] primeiro acesso concluído${skipped ? ' (sem login)' : ''}`);
+    state.onboarding = 'done';
+    state.pendingWelcome = true;
+    try { fs.writeFileSync(stateFile(), JSON.stringify(state, null, 2)); } catch { /* ignora */ }
+    setupViews.forEach((v) => v.setVisible(false));
+  });
+  on('setup-relaunch', async () => {
+    try { await ses.cookies.flushStore(); } catch { /* ignora */ }
+    app.relaunch();
+    app.isQuitting = true;
+    app.exit(0);
+  });
   on('set-economy', (_e, on) => setEconomy(on));
   on('set-notify-live', (_e, on) => { state.notifyLive = !!on; saveState(); pushGlobal(); });
   on('set-smart-audio', (_e, on) => { state.smartAudio = !!on; saveState(); pushGlobal(); });
@@ -926,14 +985,17 @@ app.on('web-contents-created', (_e, contents) => {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-app.on('second-instance', () => { if (win) { win.show(); win.focus(); } });
+app.on('second-instance', () => { const w = win || setupWin; if (w) { w.show(); w.focus(); } });
 
 let intro = null; // { kind: 'welcome' } na 1ª abertura, { kind: 'update', from } depois de atualizar
 app.whenReady().then(async () => {
   const firstRun = !fs.existsSync(stateFile());
   loadState();
   const prevVersion = state.lastVersion || (firstRun ? null : '1.0.0');
-  if (firstRun) intro = { kind: 'welcome' };
+  // Primeira vez (ou primeiro acesso não terminado): abre só a tela de login das 3 contas.
+  const onboarding = firstRun || state.onboarding === 'pending';
+  if (onboarding) state.onboarding = 'pending';
+  else if (state.pendingWelcome) { intro = { kind: 'welcome' }; delete state.pendingWelcome; }
   else if (prevVersion !== app.getVersion()) intro = { kind: 'update', from: prevVersion };
   state.lastVersion = app.getVersion();
   saveState();
@@ -949,6 +1011,8 @@ app.whenReady().then(async () => {
   const ua = ses.getUserAgent().replace(/\s(Electron|pokeidle-farm)\/\S+/g, '');
   ses.setUserAgent(ua);
   app.userAgentFallback = ua;
+
+  if (onboarding) { registerIpc(); openOnboarding(); return; }
 
   createWindow();
   registerIpc();

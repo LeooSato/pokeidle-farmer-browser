@@ -1,0 +1,27 @@
+/* Tela de primeiro acesso. As medidas de altura batem com TOP/BOTTOM do openOnboarding (main.js). */
+body.setup { height: 100vh; overflow: hidden; background: var(--bg); color: var(--text); display: block; }
+.setup-head { height: 72px; display: flex; align-items: center; gap: 14px; padding: 0 20px; }
+.setup-head .pokeball { width: 36px; height: 36px; flex: none; }
+.setup-head h1 { font-size: 17px; font-weight: 700; }
+.setup-head p { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.setup-cols { height: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 16px; }
+.setup-cols .col { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--border); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--surface); font-weight: 700; font-size: 13px; position: relative; overflow: hidden; }
+.setup-cols .col::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; }
+.setup-cols .col.game::before { background: linear-gradient(90deg, var(--poke-red), var(--poke-yellow)); }
+.setup-cols .col.twitch::before { background: #9146ff; }
+.setup-cols .col.kick::before { background: var(--kick); }
+.setup-cols .col i { width: 8px; height: 8px; border-radius: 50%; }
+.setup-cols .col.game i { background: var(--poke-yellow); }
+.setup-cols .col.twitch i { background: #9146ff; }
+.setup-cols .col.kick i { background: var(--kick); }
+.setup-cols .col small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.setup-foot { position: fixed; left: 0; right: 0; bottom: 0; height: 72px; display: flex; align-items: center; gap: 10px; padding: 0 20px; border-top: 1px solid var(--border); background: var(--surface); }
+.setup-foot .hint { flex: 1; font-size: 12.5px; color: var(--muted); }
+.setup-foot .action { height: 38px; padding: 0 18px; font-size: 13px; }
+.setup-finish { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10; animation: fade .2s ease-out; }
+.setup-finish .sheet { width: min(440px, 92vw); align-items: center; text-align: center; padding: 32px 28px; }
+.setup-finish .check { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: rgba(83, 252, 24, .12); border: 1px solid rgba(83, 252, 24, .4); }
+.setup-finish .check svg { width: 28px; height: 28px; fill: none; stroke: var(--kick); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.setup-finish h2 { font-size: 20px; }
+.setup-finish p { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.setup-finish .action { height: 40px; padding: 0 20px; font-size: 13.5px; }

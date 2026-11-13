@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>PokeIdle Farm · Primeiro acesso</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body class="setup">
+  <header class="setup-head">
+    <svg class="pokeball" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="#f4f4f5"/>
+      <path d="M2 16a14 14 0 0 1 28 0z" fill="#e3350d"/>
+      <circle cx="16" cy="16" r="14" fill="none" stroke="#0b0e14" stroke-width="2.4"/>
+      <rect x="2" y="14.8" width="28" height="2.4" fill="#0b0e14"/>
+      <circle cx="16" cy="16" r="4.6" fill="#0b0e14"/>
+      <circle cx="16" cy="16" r="2.6" fill="#ffcb05"/>
+    </svg>
+    <div>
+      <h1>Primeiro acesso: entre nas suas contas</h1>
+      <p>Faça login no PokeIdle, na Twitch e na Kick aqui embaixo. O login fica salvo só neste computador e não precisa repetir.</p>
+    </div>
+  </header>
+  <div class="setup-cols">
+    <div class="col game"><i></i>PokeIdle<small>pra farmar com a sua conta</small></div>
+    <div class="col twitch"><i></i>Twitch<small>pra contar pontos e baús</small></div>
+    <div class="col kick"><i></i>Kick<small>pra contar como espectador</small></div>
+  </div>
+  <footer class="setup-foot">
+    <span class="hint">Pode logar só em algumas. Dá pra fazer login depois pelo botão <b>Login</b> no topo do app.</span>
+    <button id="skip" class="action">Prefiro não logar</button>
+    <button id="done" class="action primary">Já loguei, continuar</button>
+  </footer>
+
+  <div id="finish" class="setup-finish" hidden>
+    <div class="sheet">
+      <div class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h2 id="finish-title">Tudo pronto!</h2>
+      <p id="finish-text">Agora reinicie o app pra ele abrir com as suas contas e as lives padrão.</p>
+      <button id="relaunch" class="action primary">Reiniciar o PokeIdle Farm</button>
+    </div>
+  </div>
+  <script src="setup.js"></script>
+</body>
+</html>
