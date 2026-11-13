@@ -221,6 +221,7 @@
     modal.hidden = false;
     document.addEventListener('keydown', onKey);
     if (o.onOpen) o.onOpen();
-    setTimeout(() => input.focus(), 50);
+    if (o.section === 'phone') setTimeout(() => { const sec = $('.mgr-phone'); sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); sec.classList.add('flash'); setTimeout(() => sec.classList.remove('flash'), 1400); }, 80);
+    else setTimeout(() => input.focus(), 50);
   };
 })();

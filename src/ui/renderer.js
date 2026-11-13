@@ -99,8 +99,9 @@ function renderStreams(list) {
   sendLayout();
 }
 
-function openManager() {
+function openManager(section) {
   window.openStreamManager({
+    section,
     streams: currentStreams,
     twitchAutoClaim: window.__twitchAutoClaim,
     onOpen: () => window.farm.dragging(true),
@@ -360,6 +361,7 @@ async function init() {
   $('#btn-smartaudio').addEventListener('click', () => window.farm.setSmartAudio(!$('#btn-smartaudio').classList.contains('on')));
   if (store.get('focus', false)) setFocus(true);
   $('#btn-streams').addEventListener('click', () => openManager());
+  $('#btn-alerts').addEventListener('click', () => openManager('phone'));
 
   document.querySelectorAll('[data-win]').forEach((b) =>
     b.addEventListener('click', () => window.farm.window(b.dataset.win)));

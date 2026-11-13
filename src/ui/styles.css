@@ -490,3 +490,5 @@ kbd { font: 600 10.5px/1 ui-monospace, Consolas, monospace; padding: 2px 5px; bo
 .ver-pill:empty { display: none; }
 button.brand-name { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 button.brand-name b { margin-left: -1px; }
+.mgr-phone { border-radius: 10px; transition: box-shadow .4s; }
+.mgr-phone.flash { box-shadow: 0 0 0 2px #5865f2, 0 0 0 8px rgba(88, 101, 242, .15); }

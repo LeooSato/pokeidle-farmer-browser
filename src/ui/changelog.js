@@ -3,7 +3,7 @@ window.CHANGELOG = [
   {
     version: '1.0.9',
     date: '13/11/2026',
-    items: ['A versão do app agora aparece na barra superior, do lado do nome. Clique nela pra ver as novidades.']
+    items: ['A versão do app agora aparece na barra superior, do lado do nome. Clique nela pra ver as novidades.', 'Botão Alertas na barra superior: abre direto a configuração do Discord (webhook, Conectar Discord e nota mínima).']
   },
   {
     version: '1.0.8',
