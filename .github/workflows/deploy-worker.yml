@@ -26,9 +26,18 @@ jobs:
           CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
           BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
-          for v in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLIENT_SECRET BOT_TOKEN; do
+          for v in CLOUDFLARE_API_TOKEN CLIENT_SECRET BOT_TOKEN; do
             if [ -z "${!v}" ]; then echo "::error::Falta o secret do GitHub para $v"; exit 1; fi
           done
+
+      - name: Descobrir Account ID (se o secret não existir)
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            ID=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts?per_page=5" | jq -r '.result[0].id')
+            [ -n "$ID" ] && [ "$ID" != "null" ] || { echo "::error::Não achei a conta do Cloudflare com esse token"; exit 1; }
+            echo "CLOUDFLARE_ACCOUNT_ID=$ID" >> "$GITHUB_ENV"
+          fi
 
       - name: Instalar wrangler
         run: npm install --no-save wrangler@4
