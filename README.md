@@ -1,29 +1,56 @@
 # PokeIdle Farm
 
-Navegador dividido: **pokeidle.io/app** à esquerda e três lives da Kick empilhadas à direita
-(axt, yetz, denissnider). Nada é suspenso em segundo plano, então dá pra minimizar e continuar farmando.
+Navegador dividido feito pra farmar: o **PokeIdle** à esquerda e lives da **Kick** e da **Twitch** empilhadas à direita.
+Nada é suspenso em segundo plano, então dá pra minimizar e continuar farmando.
 
-## Como rodar
+## Instalação
 
-1. Instale o **Node.js LTS**: https://nodejs.org (só uma vez).
-2. Abra um terminal nesta pasta e rode:
+1. Abra a página de [**Releases**](https://github.com/LeooSato/pokeidle-farmer-browser/releases/latest) e baixe um dos arquivos:
+   - **`PokeIdle-Farm-Setup-x.y.z.exe`** (recomendado): instala, cria atalho na Área de Trabalho e no Menu Iniciar e **se atualiza sozinho**.
+   - **`PokeIdle-Farm-Portatil-x.y.z.exe`**: roda sem instalar (dá pra levar num pendrive), mas **não se atualiza**; pra uma versão nova, baixe de novo.
+2. O navegador ou o Windows pode avisar que o arquivo "não é seguro" ou "não é comumente baixado". Isso acontece porque o
+   executável ainda não tem assinatura digital paga, não porque tem vírus (o código está todo aqui no repositório):
+   - **Edge:** passe o mouse no download → **⋯** → **Manter** → **Mostrar mais** → **Manter mesmo assim**.
+   - **Chrome:** na lista de downloads, **Manter** / **Baixar arquivo suspeito**.
+   - **"O Windows protegeu o computador"** (SmartScreen): **Mais informações** → **Executar assim mesmo**.
+3. Rode o instalador, escolha a pasta (ou deixe a padrão) e conclua.
+
+### Primeira abertura
+
+1. Abre a tela de **primeiro acesso** com o PokeIdle, a Twitch e a Kick lado a lado. Entre nas contas que quiser.
+   Se alguma coluna não deixar logar, clique em **abrir em janela** no topo dela. Também dá pra pular com **Prefiro não logar**.
+2. Clique em **Reiniciar o PokeIdle Farm**. O app abre com as lives padrão e uma tela de boas-vindas explicando o básico.
+3. Pra trocar as lives, use o botão **Lives**. Pra logar depois ou trocar de conta, use o botão **Login**.
+
+O login, os cookies, as configurações e as estatísticas ficam só no seu computador, em `%APPDATA%\PokeIdle Farm`.
+
+### Atualizações
+
+A versão instalada procura atualização ao abrir e a cada 30 minutos. Quando acha, baixa em segundo plano (só o que mudou)
+e acende o botão **Reiniciar** no topo; ao clicar, o app volta já na versão nova e mostra o que mudou. Dá pra rever as
+novidades a qualquer hora clicando no nome **PokeIdle Farm** no canto superior esquerdo.
+
+### Desinstalar
+
+**Configurações do Windows → Aplicativos → PokeIdle Farm → Desinstalar.** Pra apagar também o login e as
+estatísticas, apague a pasta `%APPDATA%\PokeIdle Farm`.
+
+## Rodar pelo código (desenvolvedores)
+
+1. Instale o **Node.js LTS**: https://nodejs.org
+2. Clone o repositório e rode:
    ```
    npm install
    npm start
    ```
-   Ou dê dois cliques em `iniciar.bat` (ele roda o `npm install` na primeira vez).
-   Depois disso, dê dois cliques em **`criar-atalho.vbs`**: ele cria o atalho **PokeIdle Farm** (com a pokébola)
-   na Área de Trabalho e no Menu Iniciar. Abrindo pelo atalho não aparece terminal nenhum.
-3. Pra logar, use o botão **Login** na barra de título (ou abra pelo `login.bat`). Abrem duas janelas
-   normais, uma do PokeIdle e outra da Kick. Loga nelas e fecha as duas: o login fica salvo no cache do
-   app e os painéis recarregam já logados. As lives ficam pausadas enquanto essas janelas estiverem abertas.
+   Mudanças em `src/ui/*` e `src/kick-probe.js` aplicam sem reiniciar; o resto acende o botão **Reiniciar**.
+3. `npm run dist` gera o instalador e o portátil em `dist/`.
 
-### Gerar um .exe (opcional)
+### Publicar uma versão nova
 
-```
-npm run dist
-```
-O executável portable sai em `dist/`. Coloque um `config.json` ao lado do `.exe` se quiser mudar canais sem recompilar.
+1. Suba o `version` no `package.json` e adicione o que mudou em `src/ui/changelog.js`.
+2. Faça push na `main` e rode **Actions → Release → Run workflow** (ou crie a tag `vX.Y.Z`).
+   O workflow gera os executáveis e publica no Releases; quem tem a versão instalada recebe sozinho.
 
 ## O que mantém tudo acordado
 
@@ -90,7 +117,7 @@ Outras extensões: adicione o id em `extensions` no `config.json`.
 - `watchdog`: intervalo, `stalledChecksBeforeReload` (recarrega se o vídeo ficar parado N checagens; `0` desliga) e reload preventivo em horas (`0` desliga).
 - `closeToTray`: `false` faz o X fechar o app de verdade.
 
-Os dados (login, estado da janela) ficam em `%APPDATA%\PokeIdle Farm`.
+Os dados (login, estado da janela, estatísticas) ficam em `%APPDATA%\PokeIdle Farm`.
 
 ## Licença
 
