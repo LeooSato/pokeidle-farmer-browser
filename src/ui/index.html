@@ -17,7 +17,7 @@
         <circle cx="16" cy="16" r="4.6" fill="#0b0e14"/>
         <circle cx="16" cy="16" r="2.6" fill="#ffcb05"/>
       </svg>
-      <span class="brand-name">PokeIdle <b>Farm</b></span>
+      <button class="brand-name" id="btn-news" title="Novidades e ajuda">PokeIdle <b>Farm</b></button>
       <span class="pill pill-on" title="Throttling de segundo plano desativado e suspensão bloqueada"><i></i>sempre ativo</span>
     </div>
     <div id="toast" class="toast" hidden><i></i><b></b><span></span></div>
@@ -185,6 +185,63 @@
     </div>
   </div>
 
+  <div id="welcome" class="modal" hidden>
+    <div class="sheet welcome-sheet" role="dialog" aria-labelledby="wel-title">
+      <div class="wel-hero">
+        <svg class="pokeball big" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="#f4f4f5"/>
+          <path d="M2 16a14 14 0 0 1 28 0z" fill="#e3350d"/>
+          <circle cx="16" cy="16" r="14" fill="none" stroke="#0b0e14" stroke-width="2.4"/>
+          <rect x="2" y="14.8" width="28" height="2.4" fill="#0b0e14"/>
+          <circle cx="16" cy="16" r="4.6" fill="#0b0e14"/>
+          <circle cx="16" cy="16" r="2.6" fill="#ffcb05"/>
+        </svg>
+        <div>
+          <h2 id="wel-title">Bem-vindo ao PokeIdle <b>Farm</b></h2>
+          <p>Um navegador feito pra farmar: o PokeIdle à esquerda e as lives da Kick e da Twitch à direita, tudo rodando mesmo com a janela minimizada.</p>
+        </div>
+      </div>
+      <ol class="wel-steps">
+        <li><b>Faça login</b><span>O botão <em>Login</em> no topo abre o PokeIdle e a Kick (e a Twitch, se tiver live de lá) em janelas normais. Entre nas suas contas e feche; o login fica salvo.</span></li>
+        <li><b>Escolha as lives</b><span>No botão <em>Lives</em> você adiciona canais da Kick ou da Twitch, muda a ordem e salva perfis. Live offline fica esperando e abre sozinha quando o streamer entra.</span></li>
+        <li><b>Deixe rodando</b><span>Nada é suspenso em segundo plano. O X manda o app pra bandeja (ícone da pokébola); pra sair de vez, clique com o botão direito nele.</span></li>
+      </ol>
+      <div class="wel-tips">
+        <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> modo foco</span>
+        <span><kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> expandir live</span>
+        <span><kbd>Ctrl</kbd>+<kbd>M</kbd> mutar lives</span>
+        <span><kbd>Ctrl</kbd>+<kbd>R</kbd> recarregar tudo</span>
+        <span><kbd>Ctrl</kbd>+<kbd>S</kbd> print do jogo</span>
+        <span><em>Economia</em> deixa as lives leves</span>
+      </div>
+      <p class="wel-privacy">🔒 Nada sai do seu computador: login, cookies e estatísticas ficam só em <code>%APPDATA%\PokeIdle Farm</code>.</p>
+      <footer class="sheet-foot">
+        <span class="spacer"></span>
+        <button id="wel-later" class="action">Começar</button>
+        <button id="wel-login" class="action primary">Fazer login</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="news" class="modal" hidden>
+    <div class="sheet news-sheet" role="dialog" aria-labelledby="news-title">
+      <header class="sheet-head">
+        <div>
+          <h2 id="news-title">Novidades</h2>
+          <p id="news-sub"></p>
+        </div>
+        <button id="news-close" class="icon-btn" title="Fechar (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      </header>
+      <div id="news-list" class="news-list"></div>
+      <footer class="sheet-foot">
+        <button id="news-welcome" class="action">Como usar o app</button>
+        <span class="spacer"></span>
+        <button id="news-ok" class="action primary">Fechou</button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="changelog.js"></script>
   <script src="manager.js"></script>
   <script src="renderer.js"></script>
 </body>

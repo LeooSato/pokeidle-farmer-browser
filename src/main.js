@@ -794,6 +794,7 @@ function registerIpc() {
     split: state.split || (config.layout && config.layout.split) || 60,
     startedAt,
     version: app.getVersion(),
+    intro,
     maximized: win.isMaximized(),
     platform: process.platform,
     user: state.user || null,
@@ -927,8 +928,15 @@ app.on('web-contents-created', (_e, contents) => {
 // ---------------------------------------------------------------------------
 app.on('second-instance', () => { if (win) { win.show(); win.focus(); } });
 
+let intro = null; // { kind: 'welcome' } na 1ª abertura, { kind: 'update', from } depois de atualizar
 app.whenReady().then(async () => {
+  const firstRun = !fs.existsSync(stateFile());
   loadState();
+  const prevVersion = state.lastVersion || (firstRun ? null : '1.0.0');
+  if (firstRun) intro = { kind: 'welcome' };
+  else if (prevVersion !== app.getVersion()) intro = { kind: 'update', from: prevVersion };
+  state.lastVersion = app.getVersion();
+  saveState();
 
   // 3) Impede o Windows de suspender o app
   const blockerId = powerSaveBlocker.start('prevent-app-suspension');

@@ -210,11 +210,46 @@ async function openReport() {
   modal.onmousedown = (e) => { if (e.target === modal) close(); };
 }
 
+// ---------- Boas-vindas (1ª abertura) e Novidades (depois de cada atualização) ----------
+function openSheet(id, onClose) {
+  const modal = $('#' + id);
+  modal.hidden = false;
+  window.farm.dragging(true);
+  const close = () => {
+    modal.hidden = true;
+    if (!document.querySelector('.modal:not([hidden])')) { window.farm.dragging(false); sendLayout(); }
+    document.removeEventListener('keydown', onKey);
+    if (onClose) onClose();
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  modal.onmousedown = (e) => { if (e.target === modal) close(); };
+  return close;
+}
+function openWelcome() {
+  const close = openSheet('welcome');
+  $('#wel-later').onclick = close;
+  $('#wel-login').onclick = () => { close(); window.farm.openLogin(); };
+}
+function openNews(version, from) {
+  const list = window.CHANGELOG || [];
+  $('#news-sub').textContent = from ? `Atualizado da v${from} pra v${version}` : `Você está na v${version}`;
+  $('#news-list').innerHTML = list.map((v, i) => `
+    <section class="news-ver ${v.version === version ? 'current' : ''}">
+      <h3>v${esc(v.version)}${v.version === version ? '<em>atual</em>' : ''}<small>${esc(v.date || '')}</small></h3>
+      <ul>${v.items.map((it) => `<li>${esc(it)}</li>`).join('')}</ul>
+    </section>`).join('');
+  const close = openSheet('news');
+  $('#news-close').onclick = close;
+  $('#news-ok').onclick = close;
+  $('#news-welcome').onclick = () => { close(); openWelcome(); };
+}
+
 let toastTimer = null;
 function showToast(t) {
   const el = $('#toast');
   el.className = `toast ${t.platform || ''} ${t.kind === 'live' ? 'is-live' : ''} ${t.action ? 'clickable' : ''}`;
-  el.onclick = t.action ? () => window.farm.toastAction(t.action) : null;
+  el.onclick = typeof t.action === 'function' ? () => { el.hidden = true; t.action(); } : t.action ? () => window.farm.toastAction(t.action) : null;
   $('b', el).textContent = t.title;
   $('span', el).textContent = t.body || '';
   el.hidden = false;
@@ -300,6 +335,11 @@ async function init() {
     }
   });
   $('#btn-report').addEventListener('click', () => openReport());
+  $('#btn-news').addEventListener('click', () => openNews(setup.version));
+  if (setup.intro && setup.intro.kind === 'welcome') setTimeout(openWelcome, 600);
+  else if (setup.intro && setup.intro.kind === 'update') {
+    setTimeout(() => showToast({ title: `Atualizado pra v${setup.version}`, body: 'clique pra ver o que mudou', platform: 'ok', action: () => openNews(setup.version, setup.intro.from) }), 1500);
+  }
   $('#btn-smartaudio').addEventListener('click', () => window.farm.setSmartAudio(!$('#btn-smartaudio').classList.contains('on')));
   if (store.get('focus', false)) setFocus(true);
   $('#btn-streams').addEventListener('click', () => openManager());
