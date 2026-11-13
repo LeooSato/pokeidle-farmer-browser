@@ -574,7 +574,7 @@ function startAutoUpdate() {
   updater.on('error', (e) => log(`[update] erro: ${e && e.message}`));
   const check = () => updater.checkForUpdates().catch(() => {});
   setTimeout(check, 15000);
-  setInterval(check, 4 * 3600000);
+  setInterval(check, 30 * 60000); // checa a cada 30 min
 }
 
 function restartApp() {

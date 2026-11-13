@@ -6,7 +6,8 @@ window.CHANGELOG = [
     items: [
       'Tela de boas-vindas na primeira vez que o app abre, explicando como usar.',
       'Aviso de "Novidades" depois de cada atualização, com a lista do que mudou.',
-      'Clique no nome PokeIdle Farm, no canto superior esquerdo, pra rever as novidades e a ajuda quando quiser.'
+      'Clique no nome PokeIdle Farm, no canto superior esquerdo, pra rever as novidades e a ajuda quando quiser.',
+      'Procura atualização a cada 30 minutos (antes era a cada 4 horas).'
     ]
   },
   {
