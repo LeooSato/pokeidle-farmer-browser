@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('farm', {
   openLogin: () => ipcRenderer.send('open-login'),
   setupDone: (skipped) => ipcRenderer.send('setup-done', !!skipped),
   setupRelaunch: () => ipcRenderer.send('setup-relaunch'),
+  setupPopout: (i) => ipcRenderer.send('setup-popout', i),
   setEconomy: (on) => ipcRenderer.send('set-economy', on),
   setSmartAudio: (on) => ipcRenderer.send('set-smart-audio', on),
   getReport: () => ipcRenderer.invoke('get-report'),

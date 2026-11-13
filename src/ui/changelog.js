@@ -1,6 +1,14 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.2',
+    date: '13/11/2026',
+    items: [
+      'Primeiro acesso: botão "abrir em janela" em cada coluna, pra quando o login (ex.: Kick) não funcionar dentro da tela dividida.',
+      'Boas-vindas sem o botão de login, já que o login acontece no primeiro acesso.'
+    ]
+  },
+  {
     version: '1.0.1',
     date: '13/11/2026',
     items: [

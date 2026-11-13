@@ -229,7 +229,6 @@ function openSheet(id, onClose) {
 function openWelcome() {
   const close = openSheet('welcome');
   $('#wel-later').onclick = close;
-  $('#wel-login').onclick = () => { close(); window.farm.openLogin(); };
 }
 function openNews(version, from) {
   const list = window.CHANGELOG || [];

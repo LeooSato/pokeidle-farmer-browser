@@ -14,3 +14,4 @@
   $('#done').addEventListener('click', () => finish(false));
   $('#relaunch').addEventListener('click', () => { $('#relaunch').disabled = true; $('#relaunch').textContent = 'Reiniciando…'; window.farm.setupRelaunch(); });
 })();
+document.querySelectorAll('.pop').forEach((b) => b.addEventListener('click', () => window.farm.setupPopout(b.dataset.i)));

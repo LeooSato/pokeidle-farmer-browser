@@ -754,6 +754,23 @@ function openLoginWindow() {
 // ---------------------------------------------------------------------------
 let setupWin = null;
 let setupViews = [];
+let setupPopouts = [];
+const SETUP_SITES = () => [config.game.url, 'https://www.twitch.tv/login', 'https://kick.com'];
+// Plano B: abre o site da coluna numa janela normal (igual ao botão Login); ao fechar, recarrega a coluna.
+function setupPopout(i) {
+  const view = setupViews[i];
+  if (!view) return;
+  const w = new BrowserWindow({
+    width: 900, height: 820, title: ['Login · PokeIdle', 'Login · Twitch', 'Login · Kick'][i],
+    icon: path.join(__dirname, '..', 'assets', 'icon.png'), autoHideMenuBar: true,
+    webPreferences: { session: ses, contextIsolation: true, sandbox: true }
+  });
+  w.on('page-title-updated', (e) => e.preventDefault());
+  w.webContents.setWindowOpenHandler(({ url }) => (isWebUrl(url) ? { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 520, height: 720 } } : { action: 'deny' }));
+  w.loadURL(SETUP_SITES()[i]).catch(() => {});
+  w.on('closed', () => { setupPopouts = setupPopouts.filter((x) => x !== w); if (!view.webContents.isDestroyed()) view.webContents.reload(); });
+  setupPopouts.push(w);
+}
 function openOnboarding() {
   setupWin = new BrowserWindow({
     width: 1500, height: 900, minWidth: 1100, minHeight: 640,
@@ -770,8 +787,7 @@ function openOnboarding() {
   setupWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   setupWin.once('ready-to-show', () => { setupWin.maximize(); setupWin.show(); });
 
-  const sites = [config.game.url, 'https://www.twitch.tv/login', 'https://kick.com'];
-  setupViews = sites.map((url) => {
+  setupViews = SETUP_SITES().map((url) => {
     const v = new WebContentsView({ webPreferences: { session: ses, contextIsolation: true, sandbox: true } });
     v.setBackgroundColor('#0b0e14');
     v.webContents.setWindowOpenHandler(({ url: u }) => (isWebUrl(u) ? { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 520, height: 720 } } : { action: 'deny' }));
@@ -789,6 +805,7 @@ function openOnboarding() {
     setupViews.forEach((v, i) => v.setBounds({ x: SIDE + i * (colW + GAP), y: TOP, width: colW, height: Math.max(100, h - TOP - BOTTOM) }));
   };
   setupWin.on('resize', layout);
+  setupWin.on('closed', () => setupPopouts.forEach((w) => !w.isDestroyed() && w.close()));
   layout();
   setupWin.on('closed', () => { setupWin = null; });
 }
@@ -856,7 +873,9 @@ function registerIpc() {
     state.pendingWelcome = true;
     try { fs.writeFileSync(stateFile(), JSON.stringify(state, null, 2)); } catch { /* ignora */ }
     setupViews.forEach((v) => v.setVisible(false));
+    setupPopouts.forEach((w) => !w.isDestroyed() && w.close());
   });
+  on('setup-popout', (_e, i) => setupPopout(Number(i)));
   on('setup-relaunch', async () => {
     try { await ses.cookies.flushStore(); } catch { /* ignora */ }
     app.relaunch();

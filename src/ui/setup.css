@@ -25,3 +25,6 @@ body.setup { height: 100vh; overflow: hidden; background: var(--bg); color: var(
 .setup-finish h2 { font-size: 20px; }
 .setup-finish p { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
 .setup-finish .action { height: 40px; padding: 0 20px; font-size: 13.5px; }
+.setup-cols .col .pop { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font: 600 11px/1 inherit; cursor: pointer; }
+.setup-cols .col .pop:hover { color: var(--text); border-color: var(--muted); }
+.setup-cols .col .pop svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
