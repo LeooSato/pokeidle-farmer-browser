@@ -678,7 +678,7 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.on('before-input-event', (e, input) => { if (handleShortcut(input)) e.preventDefault(); });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('https://github.com/LeooSato/pokeidle-farmer-browser')) shell.openExternal(url); return { action: 'deny' }; });
   win.once('ready-to-show', () => win.show());
 
   const remember = () => {

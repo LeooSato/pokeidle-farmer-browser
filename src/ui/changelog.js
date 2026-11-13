@@ -7,7 +7,8 @@ window.CHANGELOG = [
       'Primeiro acesso: PokeIdle, Twitch e Kick lado a lado pra fazer login (ou pular), e depois uma tela de boas-vindas explicando o app.',
       'Aviso de "Novidades" depois de cada atualização, com a lista do que mudou.',
       'Clique no nome PokeIdle Farm, no canto superior esquerdo, pra rever as novidades e a ajuda quando quiser.',
-      'Procura atualização a cada 30 minutos (antes era a cada 4 horas).'
+      'Procura atualização a cada 30 minutos (antes era a cada 4 horas).',
+      'Assinatura dev sato_ no rodapé.'
     ]
   },
   {
