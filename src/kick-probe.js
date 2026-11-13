@@ -184,7 +184,9 @@ const gameCaptures = (sprite) => `(() => {
     const ivPct = (ivTitle.match(/(\\d+)%/) || [])[1];
     const qTitle = ttl(li, '.pk-selo-q');
     const qPct = (qTitle.match(/(\\d+)%/) || [])[1];
-    const shiny = /shiny/i.test(li.className) || !!li.querySelector('[class*="shiny"], [title*="Shiny" i]');
+    // Só classe: o title do selo de nota fala "(IV, qualidade, potência e shiny)" em toda linha.
+    const shiny = /(^|[\\s-])shiny(\\s|$)/i.test(li.className) || !!li.querySelector('.cap-shiny, .pk-selo-shiny, .shiny, [class~="cm-shiny"]');
+    const novo = li.classList.contains('nova') || !!li.querySelector('.cap-novo');
     let img = null;
     if (${sprite ? 'true' : 'false'}) {
       try {
@@ -207,7 +209,7 @@ const gameCaptures = (sprite) => `(() => {
       iv: num(txt(li, '.pk-selo-iv')), ivMax: ivMax ? Number(ivMax) : null, ivPct: ivPct ? Number(ivPct) : null,
       q: num(txt(li, '.pk-selo-q')), qPct: qPct ? Number(qPct) : null,
       nota: num(txt(li, '.pk-selo-n')),
-      shiny, img
+      shiny, novo, img
     };
   }).filter((x) => x.k && x.name);
 })()`;

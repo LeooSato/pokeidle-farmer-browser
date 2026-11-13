@@ -1,6 +1,15 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.10',
+    date: '13/11/2026',
+    items: [
+      'Alertas no Discord com thread privada: em Alertas, clique em Conectar Discord. Você entra no servidor do PokeIdle Farm e ganha uma thread só sua em #pokeidle, onde chegam os avisos te marcando.',
+      'Corrigido: alarme falso de "Shiny" e aviso de capturas antigas que reapareciam na lista ordenada por nota.',
+      'O webhook próprio continua disponível em "Usar meu próprio webhook (avançado)".'
+    ]
+  },
+  {
     version: '1.0.9',
     date: '13/11/2026',
     items: ['A versão do app agora aparece na barra superior, do lado do nome. Clique nela pra ver as novidades.', 'Botão Alertas na barra superior: abre direto a configuração do Discord (webhook, Conectar Discord e nota mínima).']

@@ -43,5 +43,6 @@
       "name": "Rate for PokeIdle"
     }
   ],
-  "closeToTray": true
+  "closeToTray": true,
+  "alertServer": "https://pokeidle-farm-alerts.pokeidle-farm.workers.dev"
 }

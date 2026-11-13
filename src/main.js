@@ -574,6 +574,7 @@ function maskWebhook(url) {
 // depois avisa (PC + Discord) quando aparece captura nova com nota >= mínimo ou shiny.
 const capSeen = new Set();
 let capReady = false;
+let capSince = 0;
 let capBusy = false;
 const fmtN = (n, d = 2) => (n == null ? '?' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d }));
 async function checkCaptures() {
@@ -586,9 +587,16 @@ async function checkCaptures() {
     if (!Array.isArray(list)) return;
     const fresh = list.filter((c) => !capSeen.has(c.k));
     fresh.forEach((c) => capSeen.add(c.k));
-    if (!capReady) { capReady = true; return; }
+    if (!capReady) { capReady = true; capSince = Date.now(); return; }
     const min = Number(state.captureMinScore ?? 3);
-    const hits = fresh.filter((c) => c.shiny || (c.nota != null && c.nota >= min));
+    // Só captura nova de verdade: o data-k começa com o horário da captura (ms). A lista é ordenada
+    // por nota, então capturas antigas podem "aparecer" nela depois; essas não avisam.
+    const isNew = (c) => {
+      const ts = Number(String(c.k).split(':')[0]);
+      if (ts > 1e12) return ts >= capSince - 15000 && Date.now() - ts < 10 * 60 * 1000;
+      return !!c.novo;
+    };
+    const hits = fresh.filter(isNew).filter((c) => c.shiny || (c.nota != null && c.nota >= min));
     if (!hits.length) return;
     let withImg = [];
     if (state.discordWebhook) {
