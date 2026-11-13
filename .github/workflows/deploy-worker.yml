@@ -58,6 +58,19 @@ jobs:
           sed -i -E "s/^id = \"[^\"]*\"/id = \"$ID\"/" wrangler.toml
           grep -q "id = \"$ID\"" wrangler.toml
 
+      - name: Garantir subdomínio workers.dev
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          CUR=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API" | jq -r '.result.subdomain // empty')
+          if [ -n "$CUR" ]; then echo "subdomínio: $CUR"; exit 0; fi
+          for NAME in pokeidle-farm pokeidle-farm-alerts "pokeidle-farm-$(date +%s | tail -c 5)"; do
+            R=$(curl -sS -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data "{\"subdomain\":\"$NAME\"}" "$API")
+            if [ "$(echo "$R" | jq -r '.success')" = "true" ]; then echo "subdomínio criado: $NAME"; exit 0; fi
+            echo "$R" | jq -c '.errors'
+          done
+          echo "::error::Não consegui registrar o subdomínio workers.dev"; exit 1
+
       - name: Deploy
         id: deploy
         run: |
