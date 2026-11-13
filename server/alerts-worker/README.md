@@ -4,25 +4,15 @@ Recebe os alertas do app e posta numa **thread privada** de cada usuário no can
 
 O token do bot e o client secret ficam só aqui, como secrets do Cloudflare. Eles nunca vão no `.exe` nem no repositório. O app recebe apenas um crachá assinado, que só consegue postar na thread da própria pessoa e tem limite de 20 alertas a cada 10 minutos.
 
-## Deploy
+## Deploy (pelo GitHub Actions, dá pra fazer do celular)
 
-```bash
-cd server/alerts-worker
-npx wrangler login
-npx wrangler kv namespace create THREADS      # copie o id para wrangler.toml
-# preencha GUILD_ID e CHANNEL_ID no wrangler.toml
-npx wrangler deploy                           # mostra a URL: https://pokeidle-farm-alerts.<conta>.workers.dev
-openssl rand -hex 32 | npx wrangler secret put SESSION_KEY
-```
+1. **Cloudflare:** abra Workers & Pages uma vez (para criar o subdomínio `workers.dev`). Copie o **Account ID**. Em My Profile › API Tokens › Create Token, use o modelo **Edit Cloudflare Workers** e copie o token.
+2. **GitHub:** em Settings › Secrets and variables › Actions, crie 4 secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DISCORD_CLIENT_SECRET` (Developer Portal › OAuth2) e `DISCORD_BOT_TOKEN` (Developer Portal › Bot).
+3. Em Actions, rode **Deploy servidor de alertas**. O resumo da execução mostra a URL.
+4. No Developer Portal, em OAuth2 › Redirects, adicione `<URL>/callback`.
+5. No `config.json` do app, coloque `"alertServer": "<URL>"`.
 
-Os dois segredos do Discord podem ser colados pelo painel: Cloudflare › Workers › pokeidle-farm-alerts › Settings › Variables and Secrets › Add, do tipo **Secret**:
-
-- `CLIENT_SECRET`: Developer Portal › OAuth2 › Client Secret
-- `BOT_TOKEN`: Developer Portal › Bot › Token
-
-No Developer Portal, em OAuth2 › Redirects, adicione `https://pokeidle-farm-alerts.<conta>.workers.dev/callback`.
-
-Para terminar, coloque `"alertServer": "https://pokeidle-farm-alerts.<conta>.workers.dev"` no `config.json` do app.
+O workflow cria o KV `THREADS` sozinho e grava os segredos no Cloudflare. Eles nunca aparecem no log nem no repositório.
 
 ## Permissões do bot
 

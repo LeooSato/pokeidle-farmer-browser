@@ -10,7 +10,7 @@ GUILD_ID = "710623557343772703"
 CHANNEL_NAME = "pokeidle"
 CHANNEL_ID = ""
 
-# Mapa "id do usuário -> id da thread". Crie com: npx wrangler kv namespace create THREADS
+# Mapa "id do usuário -> id da thread". O workflow deploy-worker.yml cria e preenche o id sozinho.
 [[kv_namespaces]]
 binding = "THREADS"
 id = "PREENCHER"
@@ -18,4 +18,4 @@ id = "PREENCHER"
 # Segredos (nunca no repositório), definidos com `npx wrangler secret put <NOME>`:
 #   CLIENT_SECRET  - OAuth2 > Client Secret
 #   BOT_TOKEN      - Bot > Token
-#   SESSION_KEY    - texto aleatório longo (assina os crachás do app)
+#   SESSION_KEY    - opcional; sem ele a chave dos crachás é derivada dos dois acima

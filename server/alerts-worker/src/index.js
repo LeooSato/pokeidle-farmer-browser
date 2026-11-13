@@ -191,7 +191,11 @@ function bot(env, path, { method = 'GET', body } = {}) {
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 async function hmacKey(env) {
-  return crypto.subtle.importKey('raw', new TextEncoder().encode(env.SESSION_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+  // SESSION_KEY é opcional: sem ele, a chave é derivada dos dois segredos do Discord
+  // (trocar o token do bot invalida os crachás e todo mundo só precisa reconectar).
+  const raw = env.SESSION_KEY || `pokeidle-farm-session|${env.BOT_TOKEN}|${env.CLIENT_SECRET}`;
+  const material = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  return crypto.subtle.importKey('raw', material, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 async function sign(env, obj) {
   const data = b64u(new TextEncoder().encode(JSON.stringify(obj)));

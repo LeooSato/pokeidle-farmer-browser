@@ -1,0 +1,79 @@
+name: Deploy servidor de alertas
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/alerts-worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Conferir segredos
+        env:
+          CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+          BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          for v in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLIENT_SECRET BOT_TOKEN; do
+            if [ -z "${!v}" ]; then echo "::error::Falta o secret do GitHub para $v"; exit 1; fi
+          done
+
+      - name: Instalar wrangler
+        run: npm install --no-save wrangler@4
+
+      - name: Criar ou achar o KV THREADS
+        run: |
+          set -euo pipefail
+          TITLE="pokeidle-farm-alerts-THREADS"
+          ID=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" \
+            | jq -r --arg t "$TITLE" '.result[] | select(.title==$t) | .id' | head -1)
+          if [ -z "$ID" ]; then
+            ID=$(curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+              --data "{\"title\":\"$TITLE\"}" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces" | jq -r '.result.id')
+            echo "KV criado"
+          fi
+          sed -i "s/^id = \"PREENCHER\"/id = \"$ID\"/" wrangler.toml
+          grep -q "id = \"$ID\"" wrangler.toml
+
+      - name: Deploy
+        id: deploy
+        run: |
+          set -euo pipefail
+          npx wrangler deploy 2>&1 | tee deploy.log
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Gravar segredos no Cloudflare
+        env:
+          CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+          BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLIENT_SECRET" | npx wrangler secret put CLIENT_SECRET
+          printf '%s' "$BOT_TOKEN" | npx wrangler secret put BOT_TOKEN
+
+      - name: Resumo
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          curl -fsS "$URL/" || true
+          {
+            echo "### Servidor de alertas no ar"
+            echo ""
+            echo "URL: \`$URL\`"
+            echo ""
+            echo "Redirect para o Discord (OAuth2 › Redirects): \`$URL/callback\`"
+          } >> "$GITHUB_STEP_SUMMARY"
