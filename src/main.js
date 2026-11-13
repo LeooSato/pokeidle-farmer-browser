@@ -438,20 +438,26 @@ async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, im
   const embed = { title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, timestamp: new Date().toISOString(), footer: { text: 'PokeIdle Farm' } };
   if (thumbnail && /^https:\/\//.test(thumbnail)) embed.thumbnail = { url: thumbnail };
   if (Array.isArray(fields)) embed.fields = fields.slice(0, 25).map((f) => ({ name: String(f.name).slice(0, 256), value: String(f.value).slice(0, 1024), inline: f.inline !== false }));
-  const uid = mention && DISCORD_ID_RE.test(state.discordUserId || '') ? state.discordUserId : null;
+  const who = mention ? (state.discordUserId || '') : '';
+  const uid = DISCORD_ID_RE.test(who) ? who : null;
+  const all = who === 'everyone' || who === 'here' ? who : null;
   const wait = discordLastSend + 1500 - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   discordLastSend = Date.now();
   try {
-    const payload = { content: uid ? `<@${uid}>` : undefined, embeds: [embed], allowed_mentions: { parse: [], users: uid ? [uid] : [] } };
+    const payload = { content: uid ? `<@${uid}>` : all ? `@${all}` : undefined, embeds: [embed], allowed_mentions: { parse: all ? ['everyone'] : [], users: uid ? [uid] : [] } };
     const png = typeof image === 'string' && image.startsWith('data:image/png;base64,') ? Buffer.from(image.slice(22), 'base64') : null;
     let res;
     if (png && png.length < 2e6) {
       embed.thumbnail = { url: 'attachment://pokemon.png' };
-      const form = new FormData();
-      form.append('payload_json', JSON.stringify(payload));
-      form.append('files[0]', new Blob([png], { type: 'image/png' }), 'pokemon.png');
-      res = await net.fetch(url, { method: 'POST', body: form });
+      const b = `----pokeidlefarm${Date.now().toString(16)}`;
+      const body = Buffer.concat([
+        Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(payload)}\r\n`),
+        Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="files[0]"; filename="pokemon.png"\r\nContent-Type: image/png\r\n\r\n`),
+        png,
+        Buffer.from(`\r\n--${b}--\r\n`)
+      ]);
+      res = await net.fetch(url, { method: 'POST', headers: { 'content-type': `multipart/form-data; boundary=${b}` }, body });
     } else {
       res = await net.fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
     }
@@ -1070,10 +1076,12 @@ function registerIpc() {
     watchdogPaused
   }));
 
-  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: state.discordUserId || '', minScore: state.captureMinScore ?? 3 }));
+  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: /^(everyone|here)$/.test(state.discordUserId || '') ? '@' + state.discordUserId : state.discordUserId || '', minScore: state.captureMinScore ?? 3 }));
   handle('discord-prefs', (_e, o = {}) => {
-    const id = String(o.userId || '').replace(/[^\d]/g, '');
-    if (id && !DISCORD_ID_RE.test(id)) return { ok: false, error: 'O ID do Discord tem de 17 a 20 números.' };
+    const raw = String(o.userId || '').trim().toLowerCase();
+    const id = /^@?(everyone|here)$/.test(raw) ? raw.replace('@', '') : raw.replace(/[^\d]/g, '');
+    if (raw && !id) return { ok: false, error: 'Use seu ID do Discord (só números) ou @everyone. O nome de usuário não dá pra marcar por webhook.' };
+    if (id && !/^(everyone|here)$/.test(id) && !DISCORD_ID_RE.test(id)) return { ok: false, error: 'O ID do Discord tem de 17 a 20 números.' };
     const min = Number(o.minScore);
     state.discordUserId = id || undefined;
     if (Number.isFinite(min)) state.captureMinScore = Math.max(0, Math.min(10, min));
