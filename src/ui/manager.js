@@ -137,6 +137,33 @@
     window.farm.setTwitchAutoClaim(e.target.checked);
   });
 
+  // ---------- Alertas no celular (Discord) ----------
+  const phSay = (html, kind) => { const m = $('#ph-msg'); m.className = 'mgr-msg' + (kind ? ' ' + kind : ''); m.innerHTML = html; };
+  async function phRefresh() {
+    const d = await window.farm.discordGet();
+    $('#ph-url').value = '';
+    $('#ph-url').placeholder = d.set ? `Configurado (${d.label}). Cole outro link pra trocar.` : 'https://discord.com/api/webhooks/…';
+    $('#ph-items').checked = d.items;
+    $('#ph-save').textContent = d.set ? 'Trocar' : 'Salvar';
+    phSay(d.set ? '<span class="dim">Ativo. Deixe o campo vazio e clique em Remover pra desligar.</span>' : '');
+    window.__phSet = d.set;
+  }
+  $('#ph-save').addEventListener('click', async () => {
+    const url = $('#ph-url').value.trim();
+    if (!url && !window.__phSet) { $('#ph-url').focus(); return; }
+    const r = await window.farm.discordSet(url);
+    if (!r.ok) return phSay(esc(r.error), 'err');
+    await phRefresh();
+    phSay(url ? 'Webhook salvo. Clique em Testar pra ver chegar no celular.' : 'Alertas no celular desligados.', 'ok');
+  });
+  $('#ph-test').addEventListener('click', async () => {
+    phSay('Enviando teste…');
+    const r = await window.farm.discordTest($('#ph-url').value.trim());
+    phSay(r && r.ok ? 'Teste enviado. Olhe o Discord no celular.' : esc((r && r.error) || 'Falhou.'), r && r.ok ? 'ok' : 'err');
+  });
+  $('#ph-url').addEventListener('input', () => { if (window.__phSet) $('#ph-save').textContent = $('#ph-url').value.trim() ? 'Trocar' : 'Remover'; });
+  $('#ph-items').addEventListener('change', (e) => window.farm.discordItems(e.target.checked));
+
   // ---------- Perfis ----------
   async function renderProfiles() {
     const { profiles, active } = await window.farm.getProfiles();
@@ -173,6 +200,7 @@
     say('');
     renderList();
     renderProfiles();
+    phRefresh();
     modal.hidden = false;
     document.addEventListener('keydown', onKey);
     if (o.onOpen) o.onOpen();

@@ -468,3 +468,12 @@ kbd { font: 600 10.5px/1 ui-monospace, Consolas, monospace; padding: 2px 5px; bo
 #balls.warn b { color: var(--warn); }
 #potions img { width: 14px; height: 14px; object-fit: contain; }
 #potions.warn b { color: var(--warn); }
+
+/* Alertas no celular */
+.mgr-phone { display: flex; flex-direction: column; gap: 8px; }
+.mgr-phone h3 small { color: var(--muted); font-weight: 400; font-size: 11.5px; margin-left: 4px; }
+.mgr-phone .hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.mgr-phone .add-row { margin-top: 0; }
+.mgr-phone .add-row input:focus { border-color: #5865f2; box-shadow: 0 0 0 3px rgba(88, 101, 242, .2); }
+.mgr-phone .mgr-msg { margin-top: 0; }
+.mgr-phone .mgr-opt input:checked + .switch { background: #5865f2; }

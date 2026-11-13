@@ -1,6 +1,14 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.6',
+    date: '13/11/2026',
+    items: [
+      'Alertas no celular pelo Discord: cole o link de um webhook em Lives › Alertas no celular e clique em Testar.',
+      'Avisos de pokébolas e potions acabando também chegam no celular (dá pra desligar).'
+    ]
+  },
+  {
     version: '1.0.5',
     date: '13/11/2026',
     items: [

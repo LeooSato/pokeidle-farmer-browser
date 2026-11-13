@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('farm', {
   verifyStream: (platform, channel) => ipcRenderer.invoke('streams-verify', platform, channel),
   setTwitchAutoClaim: (on) => ipcRenderer.send('set-twitch-autoclaim', on),
   restartApp: () => ipcRenderer.send('restart-app'),
+  discordGet: () => ipcRenderer.invoke('discord-get'),
+  discordSet: (url) => ipcRenderer.invoke('discord-set', url),
+  discordTest: (url) => ipcRenderer.invoke('discord-test', url),
+  discordItems: (on) => ipcRenderer.invoke('discord-items', on),
   toggleWatchdog: () => ipcRenderer.send('toggle-watchdog'),
   on: (channel, fn) => {
     const allowed = ['panel-status', 'extensions', 'window-state', 'global-status', 'streams-changed', 'toast', 'metrics', 'game-stats', 'toggle-focus', 'shortcut'];

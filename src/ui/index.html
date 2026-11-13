@@ -154,6 +154,22 @@
         <span><b>Resgatar baú de pontos da Twitch automaticamente</b><small>Fica numa zona cinza dos termos da Twitch. Desligado por padrão.</small></span>
       </label>
 
+      <section class="mgr-phone">
+        <h3>Alertas no celular <small>via Discord</small></h3>
+        <p class="hint">No Discord: Configurações do canal › Integrações › Webhooks › Novo webhook › Copiar URL. Use um servidor ou canal só seu: o link fica salvo só neste PC.</p>
+        <div class="add-row">
+          <input id="ph-url" type="password" placeholder="https://discord.com/api/webhooks/…" spellcheck="false" autocomplete="off">
+          <button id="ph-test" class="action">Testar</button>
+          <button id="ph-save" class="action primary">Salvar</button>
+        </div>
+        <div id="ph-msg" class="mgr-msg"></div>
+        <label class="mgr-opt">
+          <input id="ph-items" type="checkbox">
+          <span class="switch"></span>
+          <span><b>Avisar também quando acabarem pokébolas ou potions</b><small>Além dos pokémons bons.</small></span>
+        </label>
+      </section>
+
       <footer class="sheet-foot">
         <button id="mgr-reset" class="action">Restaurar padrão</button>
         <span class="spacer"></span>

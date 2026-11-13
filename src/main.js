@@ -428,6 +428,31 @@ async function readItems(p) {
   if (Array.isArray(r.potions)) checkItems('potion', r.potions, { all: 'Potions acabaram', allBody: 'Todas as potions do uso automático estão zeradas.', body: 'Compre mais potions pra equipe não desmaiar.', limit: state.potionsLow ?? 100 });
   return r;
 }
+// ---------- Alertas no celular (webhook do Discord) ----------
+// O link do webhook fica só no state.json local; nunca vai pro log nem pro repositório.
+const DISCORD_RE = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,25}\/[\w-]{20,100}$/;
+let discordLastSend = 0;
+async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, url = state.discordWebhook }) {
+  if (!url || !DISCORD_RE.test(url)) return { ok: false, error: 'sem webhook' };
+  const embed = { title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, timestamp: new Date().toISOString(), footer: { text: 'PokeIdle Farm' } };
+  if (thumbnail && /^https:\/\//.test(thumbnail)) embed.thumbnail = { url: thumbnail };
+  const wait = discordLastSend + 1500 - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  discordLastSend = Date.now();
+  try {
+    const res = await net.fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }) });
+    if (res.ok) return { ok: true };
+    log(`[celular] Discord respondeu ${res.status}`);
+    return { ok: false, error: res.status === 404 || res.status === 401 ? 'webhook inválido ou apagado' : `Discord respondeu ${res.status}` };
+  } catch (err) {
+    log(`[celular] falha ao enviar: ${err.message}`);
+    return { ok: false, error: 'sem conexão com o Discord' };
+  }
+}
+function maskWebhook(url) {
+  const m = url && url.match(/webhooks\/(\d+)\//);
+  return m ? `webhook …${m[1].slice(-4)}` : null;
+}
 function itemAlert(key, title, body) {
   stats.itemAlerts = stats.itemAlerts || {};
   if (stats.itemAlerts[key]) return;
@@ -439,6 +464,7 @@ function itemAlert(key, title, body) {
     n.on('click', () => { win.show(); win.focus(); });
     n.show();
   }
+  if (state.discordItems !== false) notifyPhone({ title, description: body, color: 0xe5484d });
 }
 function checkItems(kind, list, o) {
   stats.itemAlerts = stats.itemAlerts || {};
@@ -982,6 +1008,20 @@ function registerIpc() {
     watchdogPaused
   }));
 
+  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false }));
+  handle('discord-set', (_e, url) => {
+    url = String(url || '').trim();
+    if (url && !DISCORD_RE.test(url)) return { ok: false, error: 'Isso não parece um link de webhook do Discord.' };
+    state.discordWebhook = url || undefined; saveState();
+    log(`[celular] webhook ${url ? 'configurado' : 'removido'}`);
+    return { ok: true, label: maskWebhook(url) };
+  });
+  handle('discord-items', (_e, on) => { state.discordItems = !!on; saveState(); return true; });
+  handle('discord-test', (_e, url) => {
+    url = String(url || '').trim() || state.discordWebhook;
+    if (!url || !DISCORD_RE.test(url)) return { ok: false, error: 'Cole o link do webhook primeiro.' };
+    return notifyPhone({ url, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui.', color: 0x53fc18 });
+  });
   on('open-login', () => openLoginWindow());
   // Primeiro acesso: "já loguei" ou "prefiro não logar" → mostra o aviso final; depois reinicia.
   on('setup-done', (_e, skipped) => {
