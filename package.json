@@ -76,5 +76,6 @@
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true
     }
-  }
+  },
+  "license": "MIT"
 }

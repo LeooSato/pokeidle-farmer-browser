@@ -63,7 +63,7 @@ Tem também a opção (desligada) de resgatar o baú de pontos sozinho.
 ## Se ficar lento
 
 - O botão **Auto-reload** na barra de título liga/desliga o recarregamento automático das lives.
-- O rodapé mostra o último reload automático e o motivo. Tudo fica registrado em `%APPDATA%\pokeidle-farm\farm.log`.
+- O rodapé mostra o último reload automático e o motivo. Tudo fica registrado em `%APPDATA%\PokeIdle Farm\farm.log`.
 - `"kickPlayerOnly": true` no `config.json` carrega só o player da Kick (sem chat e sem o resto do site), bem mais leve.
   Não sei se a Kick conta o tempo assistido nesse modo, então teste antes de confiar.
 
@@ -90,4 +90,16 @@ Outras extensões: adicione o id em `extensions` no `config.json`.
 - `watchdog`: intervalo, `stalledChecksBeforeReload` (recarrega se o vídeo ficar parado N checagens; `0` desliga) e reload preventivo em horas (`0` desliga).
 - `closeToTray`: `false` faz o X fechar o app de verdade.
 
-Os dados (login, estado da janela) ficam em `%APPDATA%\pokeidle-farm`.
+Os dados (login, estado da janela) ficam em `%APPDATA%\PokeIdle Farm`.
+
+## Licença
+
+[MIT](LICENSE).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Os executáveis do [Releases](https://github.com/LeooSato/pokeidle-farmer-browser/releases) são gerados só pelo GitHub Actions a partir deste repositório (workflow `.github/workflows/release.yml`).
+- Committers e aprovadores: [LeooSato](https://github.com/LeooSato) (dono do repositório). Toda assinatura de release é aprovada manualmente por ele.
+- Privacidade: este programa não envia nenhum dado para o autor nem para terceiros. Login, cookies, configurações e estatísticas ficam só no computador de quem usa (`%APPDATA%\PokeIdle Farm`). A rede é usada para abrir os sites que você escolhe (PokeIdle, Kick, Twitch), baixar as extensões da Chrome Web Store e checar atualizações no GitHub Releases.
