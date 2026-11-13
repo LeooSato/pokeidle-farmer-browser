@@ -1,5 +1,9 @@
 # PokeIdle Farm
 
+[![Última versão](https://img.shields.io/github/v/release/LeooSato/pokeidle-farmer-browser?label=vers%C3%A3o&color=ffcb05&labelColor=0b0e14)](https://github.com/LeooSato/pokeidle-farmer-browser/releases/latest)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FLeooSato%2Fpokeidle-farmer-browser%2Fbadges%2Fdownloads.json)](https://github.com/LeooSato/pokeidle-farmer-browser/releases)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-8a93a6?labelColor=0b0e14)](LICENSE)
+
 Navegador dividido feito pra farmar: o **PokeIdle** à esquerda e lives da **Kick** e da **Twitch** empilhadas à direita.
 Nada é suspenso em segundo plano, então dá pra minimizar e continuar farmando.
 

@@ -1,0 +1,36 @@
+# Conta os downloads de verdade (só os .exe, sem o latest.yml que o auto-update baixa a cada checagem)
+# e publica o número num JSON na branch "badges", que o selo do README lê.
+name: Downloads badge
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contar downloads dos .exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          N=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '[.[].assets[] | select(.name | endswith(".exe")) | .download_count] | add // 0' | awk '{s+=$1} END {print s+0}')
+          echo "downloads: $N"
+          mkdir out
+          printf '{"schemaVersion":1,"label":"downloads","message":"%s","color":"53fc18","labelColor":"0b0e14","namedLogo":"windows","logoColor":"white"}\n' "$N" > out/downloads.json
+      - name: Publicar na branch badges
+        run: |
+          cd out
+          git init -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads.json
+          git commit -qm "downloads badge"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY.git" badges
