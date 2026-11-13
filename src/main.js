@@ -730,6 +730,7 @@ function openLoginWindow() {
     w.webContents.on('before-input-event', (e, input) => {
       if (input.type === 'keyDown' && input.key === 'F5') { e.preventDefault(); w.webContents.reload(); }
     });
+    autoKickCookies(w.webContents);
     w.loadURL(site.url).catch(() => {});
     w.on('closed', () => {
       loginWins = loginWins.filter((x) => x !== w);
@@ -767,6 +768,7 @@ function setupPopout(i) {
   });
   w.on('page-title-updated', (e) => e.preventDefault());
   w.webContents.setWindowOpenHandler(({ url }) => (isWebUrl(url) ? { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 520, height: 720 } } : { action: 'deny' }));
+  autoKickCookies(w.webContents);
   w.loadURL(SETUP_SITES()[i]).catch(() => {});
   w.on('closed', () => { setupPopouts = setupPopouts.filter((x) => x !== w); if (!view.webContents.isDestroyed()) view.webContents.reload(); });
   setupPopouts.push(w);
@@ -794,6 +796,7 @@ function openOnboarding() {
     v.webContents.on('before-input-event', (e, input) => {
       if (input.type === 'keyDown' && input.key === 'F5') { e.preventDefault(); v.webContents.reload(); }
     });
+    autoKickCookies(v.webContents);
     setupWin.contentView.addChildView(v);
     v.webContents.loadURL(url).catch(() => {});
     return v;
@@ -973,6 +976,13 @@ function registerIpc() {
 // ---------------------------------------------------------------------------
 // Segurança
 // ---------------------------------------------------------------------------
+// Aceita sozinho o aviso de cookies da Kick nas janelas/colunas de login (ele às vezes fica inclicável).
+function autoKickCookies(wc) {
+  wc.on('did-finish-load', () => {
+    try { if (!/(^|\.)kick\.com$/.test(new URL(wc.getURL()).hostname)) return; } catch { return; }
+    wc.executeJavaScript(kick.kickCookies, true).catch(() => {});
+  });
+}
 function isWebUrl(u) {
   try { return ['https:', 'http:'].includes(new URL(u).protocol); } catch { return false; }
 }

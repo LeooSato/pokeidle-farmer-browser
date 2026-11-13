@@ -11,8 +11,25 @@ const videoState = `
   return { hasVideo: true, paused: v.paused, ended: v.ended, time: v.currentTime, readyState: v.readyState, triedPlay };
 `;
 
+// Kick: aviso de cookies ("Tune your KICK experience") às vezes fica inclicável; o app aceita sozinho.
+const kickCookiesClick = `
+  try {
+    const re = /^(accept all cookies|aceitar todos( os cookies)?|aceitar tudo|accept all)$/i;
+    const b = [...document.querySelectorAll('button')].find((x) => re.test((x.textContent || '').trim()) && x.offsetParent);
+    if (b) b.click();
+  } catch {}
+`;
+// Roda por até 30 s depois que a página carrega (o aviso aparece com atraso).
+const kickCookies = `(() => {
+  if (window.__farmCookies) return;
+  window.__farmCookies = true;
+  let n = 0;
+  const t = setInterval(() => { ${kickCookiesClick} if (++n > 30) clearInterval(t); }, 1000);
+})()`;
+
 // Kick: offline quando aparece "Última vez ao vivo há ..." (ou "Last live ..." em inglês).
 const kickProbe = `(() => {
+  ${kickCookiesClick}
   const text = (document.body && document.body.innerText) || '';
   if (/[ÚU]ltima vez ao vivo|Last live/i.test(text)) return { offline: true };
   ${videoState}
@@ -124,4 +141,4 @@ const lowestQualityFor = (platform) => (platform === 'twitch' ? `(() => {
 
 const probeFor = (platform) => (platform === 'twitch' ? twitchProbe : kickProbe);
 
-module.exports = { lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+module.exports = { kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
