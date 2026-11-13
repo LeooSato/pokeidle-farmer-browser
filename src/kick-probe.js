@@ -141,4 +141,21 @@ const lowestQualityFor = (platform) => (platform === 'twitch' ? `(() => {
 
 const probeFor = (platform) => (platform === 'twitch' ? twitchProbe : kickProbe);
 
-module.exports = { kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+// Pokébolas do PokeIdle: botões em #caidos-bolas com título "Ultra Ball — você tem 21.623".
+const gameBalls = `(() => {
+  const box = document.getElementById('caidos-bolas');
+  if (!box) return null;
+  return [...box.querySelectorAll('.caidos-bola')].map((b) => {
+    const t = b.getAttribute('title') || '';
+    const m = t.match(/^(.*?)\\s*[—–]\\s*.*?([\\d.,]+)\\s*$/);
+    const img = b.querySelector('img');
+    return {
+      name: m ? m[1].trim() : t.trim(),
+      qty: m ? Number(m[2].replace(/[.,]/g, '')) : null,
+      on: b.classList.contains('on'),
+      img: img ? img.getAttribute('src') : null
+    };
+  }).filter((x) => x.name);
+})()`;
+
+module.exports = { gameBalls, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

@@ -158,9 +158,26 @@ function renderStats(st) {
     `Nesta sessão: +${fmtNum(st.xpGained)} XP · +${fmtNum(st.goldGained)} ouro`,
     'Média da última hora. O gráfico mostra o XP ganho em cada minuto.'
   ].join('\n');
+  renderBalls(st.balls);
   const vals = (st.spark || []).map((v) => (v === null ? 0 : v));
   const max = Math.max(1, ...vals);
   $('#spark polyline').setAttribute('points', vals.map((v, i) => `${i},${(15 - (v / max) * 14).toFixed(1)}`).join(' '));
+}
+
+function renderBalls(balls) {
+  const el = $('#balls');
+  if (!Array.isArray(balls)) { el.hidden = true; return; }
+  el.hidden = false;
+  const fmt = (b) => (b.qty === null ? '?' : fmtNum(b.qty));
+  const main = balls.find((b) => b.on) || balls[0];
+  const img = $('img', el);
+  if (main && main.img) { img.src = new URL(main.img, 'https://pokeidle.io').href; img.hidden = false; } else img.hidden = true;
+  $('b', el).textContent = main ? fmt(main) : '0';
+  const low = balls.some((b) => b.qty !== null && b.qty < 100) || !balls.length;
+  el.classList.toggle('warn', low);
+  el.title = balls.length
+    ? 'Pokébolas\n' + balls.map((b) => `${b.on ? '● ' : '○ '}${b.name}: ${fmt(b)}`).join('\n')
+    : 'Nenhuma pokébola na tela de captura (acabaram?)';
 }
 
 function renderMetrics(m) {

@@ -462,3 +462,7 @@ kbd { font: 600 10.5px/1 ui-monospace, Consolas, monospace; padding: 2px 5px; bo
 .signature { margin-left: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; color: var(--muted); text-decoration: none; border: 1px solid var(--border); white-space: nowrap; transition: color .15s, border-color .15s; }
 .signature b { font-weight: 700; background: linear-gradient(90deg, var(--poke-red), var(--poke-yellow)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .signature:hover { color: var(--text); border-color: var(--poke-yellow); }
+
+/* Pokébolas no rodapé */
+#balls img { width: 14px; height: 14px; object-fit: contain; }
+#balls.warn b { color: var(--warn); }

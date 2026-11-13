@@ -407,9 +407,50 @@ async function sampleGameStats() {
     xpGained: stats.xpGained, goldGained: stats.goldGained,
     xpRate: rate('xp'), goldRate: rate('gold'), spark
   };
+  stats.last.balls = await readBalls(p);
   send('game-stats', stats.last);
   trackDaily(stats.xpGained - before.xp, stats.goldGained - before.gold, now);
   checkIdle(r, stats.xpGained - before.xp, now);
+}
+
+// ---------------------------------------------------------------------------
+// Pokébolas: avisa quando um tipo zera, fica abaixo do limite ou todas somem da tela.
+// ---------------------------------------------------------------------------
+async function readBalls(p) {
+  if (!kick.gameBalls) return null;
+  let balls;
+  try { balls = await p.view.webContents.executeJavaScript(kick.gameBalls, true); } catch { return null; }
+  if (!Array.isArray(balls)) return null;
+  checkBalls(balls);
+  return balls;
+}
+function ballAlert(key, title, body) {
+  stats.ballAlerts = stats.ballAlerts || {};
+  if (stats.ballAlerts[key]) return;
+  stats.ballAlerts[key] = true;
+  log(`[pokébolas] ${title}`);
+  send('toast', { title, body, platform: 'warn' });
+  if (Notification.isSupported()) {
+    const n = new Notification({ title: `PokeIdle: ${title}`, body, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
+    n.on('click', () => { win.show(); win.focus(); });
+    n.show();
+  }
+}
+function checkBalls(balls) {
+  const limit = state.ballsLow ?? 100;
+  stats.ballAlerts = stats.ballAlerts || {};
+  if (balls.length) {
+    stats.sawBalls = true; stats.noBalls = 0; delete stats.ballAlerts.none;
+  } else if (stats.sawBalls && ++stats.noBalls >= 3) {
+    ballAlert('none', 'Pokébolas acabaram?', 'Nenhuma pokébola aparece mais na tela de captura. Compre mais na loja.');
+  }
+  for (const b of balls) {
+    if (b.qty === null) continue;
+    const k0 = `zero:${b.name}`, kl = `low:${b.name}`;
+    if (b.qty === 0) ballAlert(k0, `${b.name} acabou`, 'Compre mais na loja pra continuar capturando.');
+    else if (b.qty < limit) { delete stats.ballAlerts[k0]; ballAlert(kl, `${b.name} acabando (${b.qty})`, `Restam ${b.qty}. Compre mais na loja.`); }
+    else { delete stats.ballAlerts[k0]; delete stats.ballAlerts[kl]; }
+  }
 }
 
 // ---------------------------------------------------------------------------

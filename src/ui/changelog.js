@@ -1,6 +1,14 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.4',
+    date: '13/11/2026',
+    items: [
+      'Pokébolas no rodapé: mostra quantas você tem da bola em uso (passe o mouse pra ver todas).',
+      'Aviso quando um tipo de pokébola fica abaixo de 100, zera ou quando todas somem da tela de captura.'
+    ]
+  },
+  {
     version: '1.0.3',
     date: '13/11/2026',
     items: [

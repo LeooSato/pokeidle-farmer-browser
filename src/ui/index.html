@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://pokeidle.io; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <title>PokeIdle Farm</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -62,6 +62,7 @@
       XP/h <b id="xp-rate">–</b> · Ouro/h <b id="gold-rate">–</b>
       <svg id="spark" class="spark" viewBox="0 0 60 16" preserveAspectRatio="none"><polyline points=""/></svg>
     </span>
+    <span class="stat" id="balls" hidden title="Pokébolas"><img alt="" src="" hidden><b>–</b></span>
     <span class="stat" id="last-reload" hidden><svg viewBox="0 0 16 16"><path d="M8 2.5v6M8 11.5v.5"/><circle cx="8" cy="8" r="6.2"/></svg>Último: <b></b></span>
     <span class="spacer"></span>
     <button class="report-btn" id="btn-report" hidden title="Resumo do dia: XP, ouro, tempo farmando e tempo ao vivo de cada live">
