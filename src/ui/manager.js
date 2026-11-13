@@ -148,9 +148,39 @@
     $('#ph-who').textContent = d.userName ? `conectado como ${d.userName}` : 'conecte o Discord ou cole o ID';
     $('#ph-min').value = d.minScore;
     $('#ph-save').textContent = d.set ? 'Trocar' : 'Salvar';
-    phSay(d.set ? '<span class="dim">Ativo. Deixe o campo vazio e clique em Remover pra desligar.</span>' : '');
     window.__phSet = d.set;
+    const sv = $('#ph-server'), adv = $('#ph-adv');
+    sv.hidden = !d.server;
+    adv.classList.toggle('solo', !d.server);
+    if (!d.server) adv.open = true;
+    $('#ph-connect').hidden = d.server;
+    if (d.server) {
+      sv.classList.toggle('on', d.connected);
+      $('#ph-sv-text').innerHTML = d.connected ? `Conectado como <b>${esc(d.userName || 'você')}</b>. Os alertas chegam na sua thread privada.` : 'Não conectado. Clique em Conectar Discord pra receber os alertas.';
+      $('#ph-sv-connect').textContent = d.connected ? 'Reconectar' : 'Conectar Discord';
+      ['#ph-sv-open', '#ph-sv-test', '#ph-sv-out'].forEach((id) => { $(id).hidden = !d.connected; });
+      $('#ph-sv-open').hidden = !d.connected || !d.thread;
+      phSay('');
+    } else {
+      phSay(d.set ? '<span class="dim">Ativo. Deixe o campo vazio e clique em Remover pra desligar.</span>' : '');
+    }
   }
+  async function phConnect() {
+    phSay('Faça login na janela do Discord e clique em Autorizar…');
+    const r = await window.farm.discordConnect();
+    if (!r || !r.ok) return phSay(esc((r && r.error) || 'Falhou.'), 'err');
+    await phRefresh();
+    phSay(r.thread ? `Pronto, <b>${esc(r.name)}</b>! Sua thread privada de alertas foi criada.` : `Pronto! Vou marcar <b>${esc(r.name)}</b> nos alertas.`, 'ok');
+  }
+  $('#ph-sv-connect').addEventListener('click', phConnect);
+  $('#ph-sv-open').addEventListener('click', () => window.farm.discordOpenThread());
+  $('#ph-sv-out').addEventListener('click', async () => { await window.farm.discordDisconnect(); await phRefresh(); phSay('Desconectado. Os alertas não vão mais pro Discord.', 'ok'); });
+  $('#ph-sv-test').addEventListener('click', async () => {
+    phSay('Enviando teste…');
+    const r = await window.farm.discordTest('');
+    phSay(r && r.ok ? 'Teste enviado. Olhe a sua thread no Discord.' : esc((r && r.error) || 'Falhou.'), r && r.ok ? 'ok' : 'err');
+    if (r && !r.ok) phRefresh();
+  });
   $('#ph-save').addEventListener('click', async () => {
     const url = $('#ph-url').value.trim();
     if (!url && !window.__phSet) { $('#ph-url').focus(); return; }
@@ -170,14 +200,7 @@
     if (!r.ok) phSay(esc(r.error), 'err'); else phSay('Preferências salvas.', 'ok');
   }
   $('#ph-uid').addEventListener('change', phPrefs);
-  $('#ph-connect').addEventListener('click', async () => {
-    phSay('Faça login na janela do Discord e clique em Autorizar…');
-    const r = await window.farm.discordConnect();
-    if (!r || !r.ok) return phSay(esc((r && r.error) || 'Falhou.'), 'err');
-    $('#ph-uid').value = r.userId;
-    $('#ph-who').textContent = `conectado como ${r.name}`;
-    phSay(`Pronto! Vou marcar <b>${esc(r.name)}</b> nos alertas.`, 'ok');
-  });
+  $('#ph-connect').addEventListener('click', phConnect);
   $('#ph-min').addEventListener('change', phPrefs);
   $('#ph-items').addEventListener('change', (e) => window.farm.discordItems(e.target.checked));
 

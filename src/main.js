@@ -433,8 +433,38 @@ async function readItems(p) {
 const DISCORD_RE = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,25}\/[\w-]{20,100}$/;
 let discordLastSend = 0;
 const DISCORD_ID_RE = /^\d{17,20}$/;
-async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, image, fields, mention = false, url = state.discordWebhook }) {
-  if (!url || !DISCORD_RE.test(url)) return { ok: false, error: 'sem webhook' };
+// Servidor de alertas (Cloudflare Worker): login entra no servidor do Discord e os alertas
+// vão pra thread privada da pessoa. Sem ele, cai no webhook próprio (modo avançado).
+const ALERT_SERVER = /^https:\/\/[\w.-]+(:\d+)?$/.test(String(config.alertServer || '')) ? String(config.alertServer).replace(/\/$/, '') : '';
+async function notifyServer({ title, description, color, image, fields, mention }) {
+  try {
+    const res = await net.fetch(`${ALERT_SERVER}/alert`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${state.alertSession}` },
+      body: JSON.stringify({ embed: { title, description, color, fields }, image: typeof image === 'string' ? image : undefined, mention: mention !== false })
+    });
+    const r = await res.json().catch(() => ({}));
+    if (res.ok && r.ok) return { ok: true };
+    if (res.status === 401 || res.status === 410) {
+      state.alertSession = undefined; saveState();
+      send('toast', { title: 'Reconecte o Discord', body: 'Abra Alertas e clique em Conectar Discord de novo.', platform: 'warn' });
+    }
+    log(`[celular] servidor de alertas respondeu ${res.status}`);
+    return { ok: false, error: r.error || `servidor respondeu ${res.status}` };
+  } catch (err) {
+    log(`[celular] falha ao enviar: ${err.message}`);
+    return { ok: false, error: 'sem conexão com o servidor de alertas' };
+  }
+}
+async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, image, fields, mention = false, url }) {
+  const wait0 = discordLastSend + 1500 - Date.now();
+  if (!url && ALERT_SERVER && state.alertSession) {
+    if (wait0 > 0) await new Promise((r) => setTimeout(r, wait0));
+    discordLastSend = Date.now();
+    return notifyServer({ title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, image, fields, mention });
+  }
+  url = url || state.discordWebhook;
+  if (!url || !DISCORD_RE.test(url)) return { ok: false, error: ALERT_SERVER ? 'Clique em Conectar Discord primeiro.' : 'sem webhook' };
   const embed = { title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, timestamp: new Date().toISOString(), footer: { text: 'PokeIdle Farm' } };
   if (thumbnail && /^https:\/\//.test(thumbnail)) embed.thumbnail = { url: thumbnail };
   if (Array.isArray(fields)) embed.fields = fields.slice(0, 25).map((f) => ({ name: String(f.name).slice(0, 256), value: String(f.value).slice(0, 1024), inline: f.inline !== false }));
@@ -477,7 +507,9 @@ let discordAuthWin = null;
 function discordConnect() {
   if (discordAuthWin && !discordAuthWin.isDestroyed()) { discordAuthWin.focus(); return Promise.resolve({ ok: false, error: 'A janela de login já está aberta.' }); }
   const nonce = require('crypto').randomBytes(16).toString('hex');
-  const authUrl = 'https://discord.com/oauth2/authorize?' + new URLSearchParams({ client_id: DISCORD_CLIENT_ID, response_type: 'token', scope: 'identify', redirect_uri: DISCORD_REDIRECT, state: nonce, prompt: 'consent' });
+  const authUrl = ALERT_SERVER
+    ? `${ALERT_SERVER}/login?s=${nonce}`
+    : 'https://discord.com/oauth2/authorize?' + new URLSearchParams({ client_id: DISCORD_CLIENT_ID, response_type: 'token', scope: 'identify', redirect_uri: DISCORD_REDIRECT, state: nonce, prompt: 'consent' });
   return new Promise((resolve) => {
     let done = false;
     const w = discordAuthWin = new BrowserWindow({
@@ -491,6 +523,22 @@ function discordConnect() {
       e.preventDefault();
       const u = new URL(url);
       const q = new URLSearchParams(u.hash.slice(1) || u.search.slice(1));
+      if (ALERT_SERVER) {
+        if (q.get('s') !== nonce) return finish({ ok: false, error: 'Resposta inválida do servidor.' });
+        const errs = { cancelado: 'Você cancelou a autorização.', servidor: 'Não consegui te colocar no servidor do Discord.', thread: 'Não consegui criar sua thread de alertas.' };
+        if (q.get('error')) return finish({ ok: false, error: errs[q.get('error')] || 'O login no Discord falhou.' });
+        const ses = q.get('session') || '';
+        let uid = '';
+        try { uid = String(JSON.parse(Buffer.from(ses.split('.')[0], 'base64url').toString('utf8')).u || ''); } catch { /* ignora */ }
+        if (!DISCORD_ID_RE.test(uid)) return finish({ ok: false, error: 'Resposta inválida do servidor.' });
+        state.alertSession = ses;
+        state.discordUserId = uid;
+        state.discordUserName = String(q.get('name') || '').slice(0, 40);
+        state.alertThread = /^\d{17,20}$/.test(q.get('thread') || '') && /^\d{17,20}$/.test(q.get('guild') || '') ? `https://discord.com/channels/${q.get('guild')}/${q.get('thread')}` : undefined;
+        saveState();
+        log('[celular] Discord conectado (servidor de alertas)');
+        return finish({ ok: true, userId: uid, name: state.discordUserName, thread: state.alertThread });
+      }
       if (q.get('error')) return finish({ ok: false, error: q.get('error') === 'access_denied' ? 'Você cancelou a autorização.' : 'O Discord recusou o login.' });
       if (q.get('state') !== nonce || !q.get('access_token')) return finish({ ok: false, error: 'Resposta inválida do Discord.' });
       try {
@@ -1124,7 +1172,7 @@ function registerIpc() {
     watchdogPaused
   }));
 
-  handle('discord-get', () => ({ set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: /^(everyone|here)$/.test(state.discordUserId || '') ? '@' + state.discordUserId : state.discordUserId || '', userName: state.discordUserName || '', minScore: state.captureMinScore ?? 3 }));
+  handle('discord-get', () => ({ server: !!ALERT_SERVER, connected: !!(ALERT_SERVER && state.alertSession), thread: state.alertThread || null, set: !!state.discordWebhook, label: maskWebhook(state.discordWebhook), items: state.discordItems !== false, userId: /^(everyone|here)$/.test(state.discordUserId || '') ? '@' + state.discordUserId : state.discordUserId || '', userName: state.discordUserName || '', minScore: state.captureMinScore ?? 3 }));
   handle('discord-prefs', (_e, o = {}) => {
     const raw = String(o.userId || '').trim().toLowerCase();
     const id = /^@?(everyone|here)$/.test(raw) ? raw.replace('@', '') : raw.replace(/[^\d]/g, '');
@@ -1145,10 +1193,14 @@ function registerIpc() {
     return { ok: true, label: maskWebhook(url) };
   });
   handle('discord-connect', () => discordConnect());
+  handle('discord-disconnect', () => { state.alertSession = undefined; state.alertThread = undefined; state.discordUserName = undefined; saveState(); return true; });
+  handle('discord-open-thread', () => { if (state.alertThread) shell.openExternal(state.alertThread); return true; });
   handle('discord-items', (_e, on) => { state.discordItems = !!on; saveState(); return true; });
   handle('discord-test', (_e, url) => {
-    url = String(url || '').trim() || state.discordWebhook;
-    if (!url || !DISCORD_RE.test(url)) return { ok: false, error: 'Cole o link do webhook primeiro.' };
+    url = String(url || '').trim();
+    if (!url && ALERT_SERVER && state.alertSession) return notifyPhone({ mention: true, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui, só pra você.', color: 0x53fc18 });
+    url = url || state.discordWebhook;
+    if (!url || !DISCORD_RE.test(url)) return { ok: false, error: ALERT_SERVER ? 'Clique em Conectar Discord primeiro.' : 'Cole o link do webhook primeiro.' };
     return notifyPhone({ url, mention: true, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui.', color: 0x53fc18 });
   });
   on('open-login', () => openLoginWindow());

@@ -159,22 +159,32 @@
 
       <section class="mgr-phone">
         <h3>Alertas no celular <small>via Discord</small></h3>
-        <p class="hint">No Discord: Configurações do canal › Integrações › Webhooks › Novo webhook › Copiar URL. Use um servidor ou canal só seu: o link fica salvo só neste PC.</p>
-        <div class="add-row">
-          <input id="ph-url" type="password" placeholder="https://discord.com/api/webhooks/…" spellcheck="false" autocomplete="off">
-          <button id="ph-test" class="action">Testar</button>
-          <button id="ph-save" class="action primary">Salvar</button>
+        <div id="ph-server" class="ph-server" hidden>
+          <div class="ph-status"><span class="ph-dot"></span><span id="ph-sv-text">Não conectado</span></div>
+          <div class="ph-actions">
+            <button id="ph-sv-connect" type="button" class="action ph-discord">Conectar Discord</button>
+            <button id="ph-sv-open" type="button" class="action" hidden>Abrir minha thread</button>
+            <button id="ph-sv-test" type="button" class="action" hidden>Testar</button>
+            <button id="ph-sv-out" type="button" class="action" hidden>Desconectar</button>
+          </div>
+          <p class="hint">Ao conectar, você entra no servidor do PokeIdle Farm e ganha uma <b>thread privada</b> em #alertas: só você vê os seus alertas. O app não guarda senha nem token do Discord.</p>
         </div>
         <div id="ph-msg" class="mgr-msg"></div>
-        <div class="ph-grid">
+        <label class="ph-field ph-min-row"><span>Avisar a partir da nota <small>pokémon com nota maior ou igual (shiny sempre avisa)</small></span>
+          <input id="ph-min" type="number" min="0" max="10" step="0.1" value="3">
+        </label>
+        <details id="ph-adv" class="ph-adv">
+          <summary>Usar meu próprio webhook (avançado)</summary>
+          <p class="hint">No Discord: Configurações do canal › Integrações › Webhooks › Novo webhook › Copiar URL. Use um servidor ou canal só seu: o link fica salvo só neste PC.</p>
+          <div class="add-row">
+            <input id="ph-url" type="password" placeholder="https://discord.com/api/webhooks/…" spellcheck="false" autocomplete="off">
+            <button id="ph-test" class="action">Testar</button>
+            <button id="ph-save" class="action primary">Salvar</button>
+          </div>
           <label class="ph-field"><span>Marcar você <small id="ph-who">conecte o Discord ou cole o ID</small></span>
             <span class="ph-uid-row"><input id="ph-uid" type="text" inputmode="numeric" placeholder="ID do Discord" spellcheck="false" autocomplete="off"><button id="ph-connect" type="button" class="action ph-discord">Conectar Discord</button></span>
           </label>
-          <label class="ph-field"><span>Avisar a partir da nota <small>pokémon com nota maior ou igual</small></span>
-            <input id="ph-min" type="number" min="0" max="10" step="0.1" value="3">
-          </label>
-        </div>
-        <p class="hint">Clique em <b>Conectar Discord</b>, faça login e autorize: o app pega só o seu ID pra te marcar. Não guarda senha nem token.</p>
+        </details>
         <label class="mgr-opt">
           <input id="ph-items" type="checkbox">
           <span class="switch"></span>

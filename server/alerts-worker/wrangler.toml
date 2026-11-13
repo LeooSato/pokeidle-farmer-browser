@@ -1,0 +1,19 @@
+name = "pokeidle-farm-alerts"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# IDs públicos (não são segredo). GUILD_ID e CHANNEL_ID: servidor e canal #alertas.
+[vars]
+CLIENT_ID = "1570904100856537108"
+GUILD_ID = "PREENCHER"
+CHANNEL_ID = "PREENCHER"
+
+# Mapa "id do usuário -> id da thread". Crie com: npx wrangler kv namespace create THREADS
+[[kv_namespaces]]
+binding = "THREADS"
+id = "PREENCHER"
+
+# Segredos (nunca no repositório), definidos com `npx wrangler secret put <NOME>`:
+#   CLIENT_SECRET  - OAuth2 > Client Secret
+#   BOT_TOKEN      - Bot > Token
+#   SESSION_KEY    - texto aleatório longo (assina os crachás do app)

@@ -492,3 +492,15 @@ button.brand-name { white-space: nowrap; display: inline-flex; align-items: cent
 button.brand-name b { margin-left: -1px; }
 .mgr-phone { border-radius: 10px; transition: box-shadow .4s; }
 .mgr-phone.flash { box-shadow: 0 0 0 2px #5865f2, 0 0 0 8px rgba(88, 101, 242, .15); }
+.ph-server { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+.ph-status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ph-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.ph-server.on .ph-dot { background: var(--kick); box-shadow: 0 0 0 3px rgba(83, 252, 24, .15); }
+.ph-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ph-actions .action { height: 32px; }
+.ph-min-row { max-width: 320px; }
+.ph-adv { display: flex; flex-direction: column; gap: 8px; }
+.ph-adv > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 2px 0; }
+.ph-adv[open] > summary { margin-bottom: 6px; }
+.ph-adv > * + * { margin-top: 8px; }
+.ph-adv.solo > summary { display: none; }
