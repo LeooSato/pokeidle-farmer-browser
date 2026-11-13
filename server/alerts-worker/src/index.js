@@ -95,7 +95,9 @@ async function ensureThread(env, userId, username) {
     }
   }
   const safe = String(username).toLowerCase().replace(/[^a-z0-9_.-]/g, '').slice(0, 60) || 'treinador';
-  const r = await bot(env, `/channels/${env.CHANNEL_ID}/threads`, {
+  const channel = await alertChannel(env);
+  if (!channel) { console.log('canal de alertas não encontrado'); return null; }
+  const r = await bot(env, `/channels/${channel}/threads`, {
     method: 'POST',
     body: { name: `alertas-${safe}`, type: 12, invitable: false, auto_archive_duration: 10080 }
   });
@@ -111,6 +113,20 @@ async function ensureThread(env, userId, username) {
     }
   });
   return th.id;
+}
+
+// Canal onde ficam as threads: CHANNEL_ID, ou procura pelo nome (CHANNEL_NAME) e guarda no KV.
+async function alertChannel(env) {
+  if (/^\d{17,20}$/.test(env.CHANNEL_ID || '')) return env.CHANNEL_ID;
+  const cached = await env.THREADS.get('__channel');
+  if (cached) return cached;
+  const r = await bot(env, `/guilds/${env.GUILD_ID}/channels`);
+  if (!r.ok) return null;
+  const want = String(env.CHANNEL_NAME || 'alertas').replace(/^#/, '').toLowerCase();
+  const ch = (await r.json()).find((c) => c.type === 0 && String(c.name).toLowerCase() === want);
+  if (!ch) return null;
+  await env.THREADS.put('__channel', ch.id);
+  return ch.id;
 }
 
 // ---------- alerta ----------

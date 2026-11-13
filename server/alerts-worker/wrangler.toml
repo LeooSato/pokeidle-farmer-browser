@@ -2,11 +2,13 @@ name = "pokeidle-farm-alerts"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# IDs públicos (não são segredo). GUILD_ID e CHANNEL_ID: servidor e canal #alertas.
+# IDs públicos (não são segredo). GUILD_ID: servidor. O canal das threads é achado pelo nome
+# (CHANNEL_NAME); se preferir fixar, coloque o ID em CHANNEL_ID.
 [vars]
 CLIENT_ID = "1570904100856537108"
-GUILD_ID = "PREENCHER"
-CHANNEL_ID = "PREENCHER"
+GUILD_ID = "710623557343772703"
+CHANNEL_NAME = "pokeidle"
+CHANNEL_ID = ""
 
 # Mapa "id do usuário -> id da thread". Crie com: npx wrangler kv namespace create THREADS
 [[kv_namespaces]]

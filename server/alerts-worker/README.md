@@ -1,6 +1,6 @@
 # Servidor de alertas (Cloudflare Worker)
 
-Recebe os alertas do app e posta numa **thread privada** de cada usuário no canal `#alertas` do servidor do PokeIdle Farm. Também coloca a pessoa no servidor quando ela clica em **Conectar Discord**.
+Recebe os alertas do app e posta numa **thread privada** de cada usuário no canal `#pokeidle` do servidor do PokeIdle Farm. Também coloca a pessoa no servidor quando ela clica em **Conectar Discord**.
 
 O token do bot e o client secret ficam só aqui, como secrets do Cloudflare. Eles nunca vão no `.exe` nem no repositório. O app recebe apenas um crachá assinado, que só consegue postar na thread da própria pessoa e tem limite de 20 alertas a cada 10 minutos.
 
