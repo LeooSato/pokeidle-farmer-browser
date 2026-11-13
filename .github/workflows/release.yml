@@ -1,5 +1,6 @@
 # Gera o instalador e a versão portátil no Windows e publica no GitHub Releases.
-# Como usar: suba a versão no package.json e crie a tag (ex.: git tag v1.0.1 && git push --tags).
+# Como usar: suba a versão no package.json, faça push na main e rode o workflow
+# (Actions → Release → Run workflow) ou crie a tag (git tag v1.0.1 && git push --tags).
 name: Release
 
 on:
@@ -19,6 +20,20 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run release
+      # Só gera os arquivos; quem publica é o passo de baixo (evita a corrida do electron-builder
+      # criando o mesmo release duas vezes).
+      - run: npm run dist
+      - name: Publicar no Releases
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          TAG="v$V"
+          FILES=(dist/PokeIdle-Farm-Setup-$V.exe dist/PokeIdle-Farm-Setup-$V.exe.blockmap dist/PokeIdle-Farm-Portatil-$V.exe dist/latest.yml)
+          ls -l "${FILES[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" --title "$V" --target "$GITHUB_SHA" --generate-notes
+          fi
