@@ -1,6 +1,17 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.3',
+    date: '13/11/2026',
+    items: [
+      'Mais leve: live offline "dorme" (a página é descarregada) e o app checa a cada 2 min se o streamer entrou; quando entra, a live abre sozinha.',
+      'Chat das lives escondido: a página continua contando como espectador, mas não desenha as mensagens.',
+      'Twitch também na menor qualidade, como a Kick.',
+      'Com o app minimizado ou na bandeja, as lives param de ser desenhadas (vídeo e som continuam).',
+      'Dá pra desligar o modo dormir e o chat escondido no menu da bandeja.'
+    ]
+  },
+  {
     version: '1.0.2',
     date: '13/11/2026',
     items: [

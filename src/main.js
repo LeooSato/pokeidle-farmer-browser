@@ -92,7 +92,7 @@ function streamUrl(s) {
 
 function pushStatus(p) {
   send('panel-status', {
-    id: p.id, status: p.status, muted: p.view.webContents.isAudioMuted(),
+    id: p.id, status: p.status, sleeping: !!p.sleeping, muted: p.view.webContents.isAudioMuted(),
     reloads: p.reloads, totalReloads, zoom: p.view.webContents.getZoomFactor(), lastReason: p.lastReason || null
   });
 }
@@ -105,6 +105,11 @@ function setStatus(p, status) {
   // Lives: depois que já se sabe se está ao vivo ou offline, "carregando/verificando" não aparece mais.
   // A checagem continua em segundo plano e o status só muda quando a live realmente abre (ou cai).
   if (p.kind === 'stream' && p.stable && (status === 'loading' || status === 'checking')) return;
+  // Offline: agenda a página pra dormir (sem reiniciar a contagem a cada checagem).
+  if (p.kind === 'stream' && status === 'offline' && !p.sleeping && !p.sleepTimer) {
+    p.sleepTimer = setTimeout(() => { p.sleepTimer = null; sleepPanel(p); }, SLEEP_AFTER_MS);
+  }
+  if (p.kind === 'stream' && status !== 'offline' && p.sleepTimer) { clearTimeout(p.sleepTimer); p.sleepTimer = null; }
   if (p.status === status) return;
   p.status = status;
   if (p.kind === 'stream' && (status === 'offline' || status === 'live')) {
@@ -112,6 +117,44 @@ function setStatus(p, status) {
     p.stable = status;
   }
   pushStatus(p);
+}
+
+// ---------------------------------------------------------------------------
+// Live offline "dorme": a página é descarregada (economiza RAM e CPU) e a API da
+// Kick/Twitch é consultada a cada 2 min. Quando o streamer abre, a live carrega de novo.
+// Se a API não responder 3 vezes seguidas, acorda a página e não dorme mais (plano B).
+// ---------------------------------------------------------------------------
+const SLEEP_AFTER_MS = Number(process.env.FARM_SLEEP_AFTER_MS) || 3 * 60000;
+const SLEEP_POLL_MS = Number(process.env.FARM_SLEEP_POLL_MS) || 2 * 60000;
+const SLEEP_PAGE = 'data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><html><body style="margin:0;height:100vh;display:grid;place-items:center;background:#0b0e14;color:#8a93a6;font:13px system-ui,sans-serif;text-align:center"><div><div style="font-size:28px">💤</div><p style="margin:8px 0 0">Offline. A página está dormindo pra economizar.</p><p style="margin:4px 0 0;opacity:.7">Abre sozinha quando o streamer entrar ao vivo.</p></div></body></html>`);
+function sleepEnabled() { return state.sleepOffline !== false; }
+async function sleepPanel(p) {
+  if (!panels.has(p.id) || p.sleeping || p.paused || p.status !== 'offline' || !sleepEnabled() || p.apiBroken) return;
+  const r = await streams.verify(ses, p.platform, p.channel).catch(() => ({ exists: null }));
+  if (r.exists === null) { log(`[${p.id}] API não respondeu, a página continua aberta`); return; }
+  if (r.live || p.status !== 'offline') return;
+  p.sleeping = true; p.apiFails = 0;
+  clearTimeout(p.retryTimer);
+  log(`[${p.id}] offline: página dormindo, checando pela API a cada 2 min`);
+  clearInterval(p.quickTimer);
+  p.view.webContents.loadURL(SLEEP_PAGE).catch(() => {});
+  pushStatus(p);
+}
+function wakePanel(p, reason) {
+  if (!p.sleeping) return;
+  p.sleeping = false;
+  log(`[${p.id}] acordando: ${reason}`);
+  p.failed = true; // força loadURL da URL original
+  reloadPanel(p, reason, { auto: false });
+}
+async function pollSleeping() {
+  for (const p of panels.values()) {
+    if (!p.sleeping) continue;
+    const r = await streams.verify(ses, p.platform, p.channel).catch(() => ({ exists: null }));
+    if (r.live) { wakePanel(p, 'entrou ao vivo (API)'); continue; }
+    if (r.exists === null && ++p.apiFails >= 3) { p.apiBroken = true; wakePanel(p, 'API sem resposta, voltando a vigiar pela página'); continue; }
+    if (r.exists !== null) p.apiFails = 0;
+  }
 }
 
 // Aviso quando um streamer que estava offline entra ao vivo (Windows + aviso dentro do app).
@@ -131,6 +174,7 @@ function notifyLive(p) {
 
 function reloadPanel(p, reason, { auto = true } = {}) {
   if (!p) return;
+  if (p.sleeping) { p.sleeping = false; p.failed = true; }
   log(`[${p.id}] reload: ${reason}`);
   if (auto) {
     p.reloads++; totalReloads++;
@@ -148,7 +192,12 @@ function reloadPanel(p, reason, { auto = true } = {}) {
   pushStatus(p);
 }
 
-function createPanel({ id, kind, title, url, platform }) {
+// Esconde o chat nas lives: a página continua a mesma (conta como espectador), mas não desenha as mensagens.
+const HIDE_CHAT_CSS = {
+  kick: '#channel-chatroom, #chatroom, [data-testid="chatroom"], [data-testid="chat"] { display: none !important; }',
+  twitch: '.channel-root__right-column, .right-column, [data-a-target="right-column-chat-bar"] { display: none !important; }'
+};
+function createPanel({ id, kind, title, url, platform, channel }) {
   const view = new WebContentsView({
     webPreferences: {
       session: ses,
@@ -163,7 +212,7 @@ function createPanel({ id, kind, title, url, platform }) {
   win.contentView.addChildView(view);
 
   const p = {
-    id, kind, title, url, platform, view, status: 'loading', reloads: 0,
+    id, kind, title, url, platform, channel, view, status: 'loading', reloads: 0,
     stalled: 0, lastTime: null, noVideoSince: null, qualityFixed: false, lastLoad: Date.now()
   };
   panels.set(id, p);
@@ -174,9 +223,10 @@ function createPanel({ id, kind, title, url, platform }) {
   if (kind === 'game' && config.game.zoom) wc.setZoomFactor(config.game.zoom);
   if (state.zoom && state.zoom[id]) wc.setZoomFactor(state.zoom[id]);
 
-  wc.on('did-start-loading', () => { if (p.paused) return; p.failed = false; setStatus(p, 'loading'); });
+  wc.on('did-start-loading', () => { if (p.paused || p.sleeping) return; p.failed = false; setStatus(p, 'loading'); });
+  if (kind === 'stream') wc.on('dom-ready', () => { if (!p.sleeping && state.hideChat !== false) wc.insertCSS(HIDE_CHAT_CSS[platform] || '').catch(() => {}); });
   wc.on('did-stop-loading', () => {
-    if (p.failed || p.paused) return;
+    if (p.failed || p.paused || p.sleeping) return;
     p.failCount = 0;
     p.lastLoad = Date.now();
     setStatus(p, kind === 'game' ? 'ok' : 'checking');
@@ -231,7 +281,7 @@ function createPanel({ id, kind, title, url, platform }) {
 async function applyEconomyQuality(p) {
   if (p.kind !== 'stream' || !state.economy || p.ecoQuality) return;
   const wc = p.view.webContents;
-  if (wc.isLoading() || p.paused) return;
+  if (wc.isLoading() || p.paused || p.sleeping) return;
   p.ecoQuality = true;
   const changed = await wc.executeJavaScript(kick.lowestQualityFor(p.platform), true).catch(() => false);
   if (changed) reloadPanel(p, 'modo economia: qualidade baixa', { auto: false });
@@ -486,7 +536,7 @@ function quickDetect(p) {
   p.quickTimer = setInterval(async () => {
     const wc = p.view.webContents;
     if (!panels.has(p.id) || Date.now() - started > 120000) { clearInterval(p.quickTimer); return; }
-    if (p.paused || wc.isLoading() || wc.isCrashed()) return;
+    if (p.paused || p.sleeping || wc.isLoading() || wc.isCrashed()) return;
     try {
       const r = await wc.executeJavaScript(kick.probeFor(p.platform), true);
       if (r && r.offline) { setStatus(p, 'offline'); clearInterval(p.quickTimer); }
@@ -500,7 +550,7 @@ function quickDetect(p) {
 // ---------------------------------------------------------------------------
 async function checkStream(p) {
   const wc = p.view.webContents;
-  if (watchdogPaused || loginWins.length || p.paused) return;
+  if (watchdogPaused || loginWins.length || p.paused || p.sleeping) return;
   if (wc.isLoading() || wc.isCrashed() || p.failed) return;
   // Dá 2 minutos pra página da live estabilizar antes de julgar.
   if (Date.now() - p.lastLoad < 120000) {
@@ -513,9 +563,9 @@ async function checkStream(p) {
   }
   const wd = config.watchdog || {};
 
-  if (p.platform === 'kick' && config.lowestQuality && !p.qualityFixed) {
+  if (config.lowestQuality && !p.qualityFixed) {
     p.qualityFixed = true;
-    const changed = await wc.executeJavaScript(kick.lowestQuality, true).catch(() => false);
+    const changed = await wc.executeJavaScript(kick.lowestQualityFor(p.platform), true).catch(() => false);
     if (changed) { reloadPanel(p, 'aplicar qualidade baixa', { auto: false }); return; }
   }
 
@@ -688,6 +738,7 @@ function createWindow() {
   win.on('resize', remember);
   win.on('move', remember);
   const maxChanged = () => { state.maximized = win.isMaximized(); saveState(); send('window-state', { maximized: win.isMaximized() }); };
+  for (const ev of ['minimize', 'restore', 'hide', 'show']) win.on(ev, () => applyViewVisibility());
   win.on('maximize', maxChanged);
   win.on('unmaximize', maxChanged);
 
@@ -832,6 +883,15 @@ function buildTrayMenu() {
       submenu: profiles.map((pr) => ({ label: pr.name, type: 'radio', checked: state.activeProfile === pr.name, click: () => applyProfile(pr.name) }))
     }] : []),
     { label: 'Avisar quando entrar ao vivo', type: 'checkbox', checked: state.notifyLive !== false, click: (i) => { state.notifyLive = i.checked; saveState(); pushGlobal(); } },
+    { label: 'Live offline dorme (economiza RAM)', type: 'checkbox', checked: state.sleepOffline !== false, click: (i) => {
+      state.sleepOffline = i.checked; saveState();
+      if (!i.checked) panels.forEach((p) => wakePanel(p, 'modo dormir desligado'));
+      else panels.forEach((p) => p.status === 'offline' && sleepPanel(p));
+    } },
+    { label: 'Esconder chat das lives', type: 'checkbox', checked: state.hideChat !== false, click: (i) => {
+      state.hideChat = i.checked; saveState();
+      panels.forEach((p) => p.kind === 'stream' && !p.sleeping && reloadPanel(p, 'chat ' + (i.checked ? 'escondido' : 'visível'), { auto: false }));
+    } },
     { label: 'Recarregar lives', click: () => panels.forEach((p) => p.kind === 'stream' && reloadPanel(p, 'bandeja', { auto: false })) },
     { label: 'Salvar print do jogo (Ctrl+S)', click: () => screenshotGame() },
     { type: 'separator' },
@@ -839,6 +899,12 @@ function buildTrayMenu() {
   ]));
 }
 
+// Com o app minimizado ou na bandeja, as lives param de ser desenhadas (o vídeo e o som continuam).
+let modalOpen = false;
+function applyViewVisibility() {
+  const hidden = !win || win.isDestroyed() || win.isMinimized() || !win.isVisible();
+  panels.forEach((p) => p.view.setVisible(!modalOpen && !(hidden && p.kind === 'stream')));
+}
 function registerIpc() {
   // Só a interface do próprio app (file://.../ui/index.html) pode falar com o processo principal.
   const trusted = (e) => (!!win && !win.isDestroyed() && e.sender === win.webContents)
@@ -943,7 +1009,7 @@ function registerIpc() {
 
   // Enquanto arrasta a divisória, esconde as páginas para o mouse não "cair" dentro delas.
   // Também usado quando a tela "Gerenciar lives" abre por cima (as páginas continuam rodando).
-  on('dragging', (_e, on) => panels.forEach((p) => p.view.setVisible(!on)));
+  on('dragging', (_e, on) => { modalOpen = !!on; applyViewVisibility(); });
 
   on('set-split', (_e, split) => { state.split = split; saveState(); });
 
@@ -1067,6 +1133,7 @@ app.whenReady().then(async () => {
   startMetrics();
   startNetworkWatch();
   startAutoUpdate();
+  setInterval(pollSleeping, SLEEP_POLL_MS);
   setInterval(sampleGameStats, 30000);
   setTimeout(sampleGameStats, 15000);
 });

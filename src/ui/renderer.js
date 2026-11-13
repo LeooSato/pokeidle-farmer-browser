@@ -359,7 +359,7 @@ async function init() {
       lastStatus[s.id] = s.status;
     }
     applyCollapse(s.id);
-    $('em', chip).textContent = STATUS_LABEL[s.status] || s.status;
+    $('em', chip).textContent = s.sleeping ? 'offline · dormindo' : (STATUS_LABEL[s.status] || s.status);
     el.classList.toggle('muted', !!s.muted);
     $('.title', el).title = s.reloads
       ? `${s.reloads} reload(s) automático(s) · último motivo: ${s.lastReason} · zoom ${Math.round(s.zoom * 100)}%`
