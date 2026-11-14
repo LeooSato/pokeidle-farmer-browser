@@ -1,6 +1,14 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.12',
+    date: '14/11/2026',
+    items: [
+      'Tela do jogo cinza: se o jogo some (tela cinza ou vazia) por 2 minutos, o app recarrega sozinho. Se não voltar, ele reinicia a página do zero e continua tentando, com intervalos cada vez maiores.',
+      'Avisos no Discord quando o jogo fecha sozinho, trava, volta ao normal ou o XP para (opção "avisos de itens" em Alertas).'
+    ]
+  },
+  {
     version: '1.0.11',
     date: '14/11/2026',
     items: [

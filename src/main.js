@@ -245,6 +245,7 @@ function createPanel({ id, kind, title, url, platform, channel }) {
   });
   wc.on('render-process-gone', (_e, details) => {
     log(`[${id}] processo caiu: ${details.reason}`);
+    if (kind === 'game' && details.reason !== 'killed' && !p.blankTries) notifyFarm('O jogo fechou sozinho', `O processo do jogo caiu (${details.reason}). Recarregando.`, 0xe5484d);
     setStatus(p, 'error');
     setTimeout(() => reloadPanel(p, 'processo caiu'), 3000);
   });
@@ -377,8 +378,10 @@ async function sampleGameStats() {
   const p = panels.get('game');
   if (!p || p.view.webContents.isLoading() || !kick.gameStats) return;
   let r;
-  try { r = await p.view.webContents.executeJavaScript(kick.gameStats, true); } catch { return; }
-  if (!r) return;
+  // timeout: com o renderer travado o executeJavaScript nunca volta
+  try { r = await Promise.race([p.view.webContents.executeJavaScript(kick.gameStats, true), new Promise((ok) => setTimeout(() => ok('timeout'), 20000))]); } catch { r = null; }
+  checkBlank(p, r && r !== 'timeout' && (r.xp !== null || r.gold !== null));
+  if (!r || r === 'timeout') return;
   if (!stats.idsLogged && r.ids) { stats.idsLogged = true; log(`[stats] ids encontrados: ${JSON.stringify(r.ids)}`); }
   const prev = stats.prev;
   const before = { xp: stats.xpGained, gold: stats.goldGained };
@@ -708,6 +711,37 @@ function checkItems(kind, list, o) {
 // ---------------------------------------------------------------------------
 // Aviso de inatividade: XP parado por X minutos (padrão 10) → notificação.
 // ---------------------------------------------------------------------------
+// Tela do jogo cinza/vazia: a página "carregou" mas o jogo não aparece (sem XP nem ouro na barra).
+// Aconteceu depois do processo do jogo cair: o reload voltou cinza e ficou assim por horas.
+// Depois de 2 min assim recarrega; se 2 recargas não resolverem, derruba o processo da página
+// (o handler de render-process-gone abre um novo do zero). O intervalo cresce até 10 min.
+function checkBlank(p, ok) {
+  const now = Date.now();
+  if (ok) {
+    if (p.blankTries) { log(`[game] jogo voltou depois de ${p.blankTries} tentativa(s)`); notifyFarm('O jogo voltou', 'A tela do jogo voltou ao normal e o farm continuou.', 0x53fc18); }
+    p.blankSince = null; p.blankTries = 0; p.gameSeen = true;
+    return;
+  }
+  // só depois de o jogo ter aparecido uma vez (não atrapalha quem ainda está fazendo login)
+  if (!p.gameSeen || p.paused || p.sleeping || p.view.webContents.isLoading() || now - (p.lastLoad || 0) < 90000) return;
+  if (!p.blankSince) { p.blankSince = now; return; }
+  const wait = Math.min(10, 2 * ((p.blankTries || 0) + 1)) * 60000;
+  if (now - p.blankSince < wait) return;
+  p.blankTries = (p.blankTries || 0) + 1;
+  p.blankSince = now;
+  if (p.blankTries === 1) notifyFarm('Tela do jogo travou', 'O jogo ficou cinza/sem resposta. Recarregando sozinho, te aviso quando voltar.', 0xe5484d);
+  if (p.blankTries >= 3) {
+    log(`[game] tela vazia de novo (tentativa ${p.blankTries}): reiniciando o processo da página`);
+    try { p.view.webContents.forcefullyCrashRenderer(); return; } catch { /* cai no reload normal */ }
+  }
+  reloadPanel(p, `tela do jogo vazia (tentativa ${p.blankTries})`);
+}
+// Aviso de problema no farm: PC + Discord (usa a mesma opção dos avisos de itens).
+function notifyFarm(title, body, color) {
+  log(`[farm] ${title}: ${body}`);
+  send('toast', { title, body, platform: color === 0x53fc18 ? 'ok' : 'warn' });
+  if (state.discordItems !== false) notifyPhone({ title, description: body, color });
+}
 function checkIdle(r, dxp, now) {
   if (r.xp === null) return;
   const limit = (state.idleMinutes || 10) * 60000;
@@ -720,6 +754,7 @@ function checkIdle(r, dxp, now) {
   stats.idleAlerted = true;
   const min = Math.round((now - stats.lastXpUp) / 60000);
   log(`[stats] XP parado há ${min} min`);
+  if (state.discordItems !== false) notifyPhone({ title: `XP parado há ${min} min`, description: 'O Pokémon pode ter desmaiado, a poção acabado ou o jogo travado.', color: 0xe5484d });
   send('toast', { title: `XP parado há ${min} min`, body: 'Pokémon desmaiou, acabou poção ou o jogo travou?', platform: 'warn' });
   if (Notification.isSupported()) {
     const n = new Notification({
