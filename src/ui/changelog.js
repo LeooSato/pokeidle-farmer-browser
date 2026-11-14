@@ -1,6 +1,13 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.15',
+    date: '14/11/2026',
+    items: [
+      'Comprar pelo Discord: o aviso de pokébola ou potion acabando chega com os botões "Comprar 100", "Comprar 1.000" e "Agora não". Tocou, o app compra pelo Market em até 1 minuto e te responde na thread. Nunca gasta mais da metade do seu ouro.'
+    ]
+  },
+  {
     version: '1.0.14',
     date: '14/11/2026',
     items: [

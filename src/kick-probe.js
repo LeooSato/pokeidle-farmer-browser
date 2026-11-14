@@ -237,14 +237,17 @@ const gameCaptureHist = () => `(() => {
 // Compra de pokébola pelo próprio Market do jogo: abre o modal, aba Comprar, categoria Pokebolas,
 // acha o card pelo nome, põe a quantidade e clica em Comprar. Confere pelo "você tem ×N" do card.
 // Devolve { ok, before, after, gold, price, error }. Só fecha o modal se foi ele que abriu.
-const gameBuyBall = (name, qty) => `(async () => {
+const gameBuyItem = (kind, name, qty) => `(async () => {
   const want = ${JSON.stringify(String(name))}.toLowerCase();
+  const catRe = ${kind === 'potion' ? '/po[çc][õo]es|potion/i' : '/pok[eé]bola|bola/i'};
   const qty = ${Math.max(1, Math.min(9999, Math.floor(Number(qty) || 0)))};
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const n = (t) => { const v = Number(String(t || '').replace(/[^\\d]/g, '')); return Number.isFinite(v) ? v : null; };
-  const card = () => [...document.querySelectorAll('.mk-card')].find((c) => {
-    const e = c.querySelector('.mk-nome'); return e && ((e.getAttribute('title') || e.textContent).trim().toLowerCase() === want);
-  });
+  const nameOf = (c) => { const e = c.querySelector('.mk-nome'); return e ? (e.getAttribute('title') || e.textContent).trim().toLowerCase() : ''; };
+  const card = () => {
+    const all = [...document.querySelectorAll('.mk-card')];
+    return all.find((c) => nameOf(c) === want) || all.find((c) => nameOf(c) && (nameOf(c).includes(want) || want.includes(nameOf(c))));
+  };
   const until = async (fn, ms = 5000) => { for (let t = 0; t < ms; t += 150) { const v = fn(); if (v) return v; await sleep(150); } return null; };
   const modal = () => document.querySelector('.modal-caixa[data-modal="market"]');
   let opened = false;
@@ -258,7 +261,7 @@ const gameBuyBall = (name, qty) => `(async () => {
     const tab = document.querySelector('#mk-modos [data-aba="compra"]');
     if (tab && !tab.classList.contains('on')) { tab.click(); await sleep(400); }
     if (!card()) {
-      const cat = [...document.querySelectorAll('.mk-cat')].find((b) => /pokebola|pokébola|bola/i.test(b.textContent));
+      const cat = [...document.querySelectorAll('.mk-cat')].find((b) => catRe.test(b.textContent));
       if (cat) { cat.click(); await sleep(400); }
     }
     const c = await until(card);
@@ -289,4 +292,6 @@ const gameBuyBall = (name, qty) => `(async () => {
   }
 })()`;
 
-module.exports = { gameCaptures, gameCaptureHist, gameBuyBall, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+const gameBuyBall = (name, qty) => gameBuyItem('ball', name, qty);
+
+module.exports = { gameCaptures, gameCaptureHist, gameBuyBall, gameBuyItem, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

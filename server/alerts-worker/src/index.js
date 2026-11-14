@@ -6,7 +6,8 @@
 //                     e devolve ao app um "crachá" assinado (só vale pra thread dessa pessoa)
 //   POST /alert     → o app manda o alerta com o crachá e o bot posta na thread marcando a pessoa
 //   POST /captures  → o app manda as capturas (sem imagem) pra montar o /resumo; ficam só 48 h
-//   POST /interactions → comandos do Discord (/resumo), assinados pelo Discord (Ed25519)
+//   POST /interactions → comandos do Discord (/resumo) e botões "Comprar", assinados pelo Discord (Ed25519)
+//   GET  /commands  → o app busca os pedidos de compra feitos pelos botões (fila de 30 min)
 //
 // Não guarda token do Discord nem histórico de alertas. O KV só tem "id do usuário → id da thread";
 // o D1 só tem as capturas das últimas 48 h (nome, nível, nota, IV, Q, P, shiny) e o último contato do app.
@@ -28,6 +29,7 @@ export default {
       if (req.method === 'POST' && url.pathname === '/alert') return await alert(req, env);
       if (req.method === 'POST' && url.pathname === '/captures') return await captures(req, env);
       if (req.method === 'POST' && url.pathname === '/interactions') return await interactions(req, env);
+      if (req.method === 'GET' && url.pathname === '/commands') return await commands(req, env);
       if (req.method === 'GET' && url.pathname === '/') return text('PokeIdle Farm alerts: ok');
       return text('not found', 404);
     } catch (err) {
@@ -152,7 +154,12 @@ async function alert(req, env) {
   try { body = await req.json(); } catch { return json({ ok: false, error: 'json inválido' }, 400); }
 
   const embed = cleanEmbed(body.embed || {});
+  const buy = cleanBuy(body.buy);
   const payload = { content: body.mention === false ? undefined : `<@${ses.u}>`, embeds: [embed], allowed_mentions: { parse: [], users: body.mention === false ? [] : [ses.u] } };
+  if (buy) payload.components = [{ type: 1, components: [
+    ...BUY_QTYS.map((q) => ({ type: 2, style: q === BUY_QTYS[0] ? 2 : 3, label: `Comprar ${q.toLocaleString('pt-BR')}`, custom_id: `buy|${buy.kind}|${q}|${buy.name}` })),
+    { type: 2, style: 2, label: 'Agora não', custom_id: 'skip' }
+  ] }];
   let png = null;
   if (typeof body.image === 'string' && body.image.startsWith('data:image/png;base64,')) {
     const bin = Uint8Array.from(atob(body.image.slice(22)), (c) => c.charCodeAt(0));
@@ -180,6 +187,12 @@ function postMessage(env, channel, payload, png) {
   return fetch(`${API}/channels/${channel}/messages`, { method: 'POST', headers: { authorization: `Bot ${env.BOT_TOKEN}` }, body: form });
 }
 
+const BUY_QTYS = [100, 1000];
+function cleanBuy(b) {
+  if (!b || !['ball', 'potion'].includes(b.kind)) return null;
+  const name = String(b.name || '').trim();
+  return /^[\p{L}\p{N} .'()-]{2,40}$/u.test(name) ? { kind: b.kind, name } : null;
+}
 function cleanEmbed(e) {
   const s = (v, n) => String(v == null ? '' : v).slice(0, n);
   const out = { title: s(e.title, 256), description: s(e.description, 2000), color: Number.isInteger(e.color) ? e.color : 0x53fc18, timestamp: new Date().toISOString(), footer: { text: 'PokeIdle Farm' } };
@@ -194,7 +207,8 @@ async function schema(env) {
   await env.DB.batch([
     env.DB.prepare('CREATE TABLE IF NOT EXISTS captures (user TEXT NOT NULL, k TEXT NOT NULL, t INTEGER NOT NULL, name TEXT, level INTEGER, nota REAL, iv INTEGER, q REAL, pot INTEGER, shiny INTEGER DEFAULT 0, PRIMARY KEY (user, k))'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS captures_user_t ON captures(user, t)'),
-    env.DB.prepare('CREATE TABLE IF NOT EXISTS seen (user TEXT PRIMARY KEY, at INTEGER NOT NULL, ver TEXT)')
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS seen (user TEXT PRIMARY KEY, at INTEGER NOT NULL, ver TEXT)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS commands (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, type TEXT NOT NULL, kind TEXT, name TEXT, qty INTEGER, at INTEGER NOT NULL, done INTEGER DEFAULT 0)')
   ]);
   schemaReady = true;
 }
@@ -270,7 +284,42 @@ async function interactions(req, env) {
     const embed = await summary(env, user, hours);
     return json({ type: 4, data: { flags: 64, embeds: [embed], allowed_mentions: { parse: [] } } });
   }
+  if (it.type === 3 && it.data) return await button(env, it);
   return json({ type: 4, data: { flags: 64, content: 'Comando desconhecido.' } });
+}
+
+// Botões do alerta de itens. Só vale na thread de quem clicou (a thread é dele no KV).
+async function button(env, it) {
+  const user = String((it.member && it.member.user && it.member.user.id) || (it.user && it.user.id) || '');
+  const id = String(it.data.custom_id || '');
+  const done = (label, style = 2) => json({ type: 7, data: { components: [{ type: 1, components: [{ type: 2, style, label: label.slice(0, 80), custom_id: 'done', disabled: true }] }] } });
+  const mine = user && (await env.THREADS.get(user)) === String(it.channel_id || '');
+  if (!mine) return json({ type: 4, data: { flags: 64, content: 'Esse botão é de outra pessoa.' } });
+  if (id === 'skip') return done('Ok, não comprei');
+  const m = id.match(/^buy\|(ball|potion)\|(\d+)\|(.+)$/);
+  const qty = m ? Number(m[2]) : 0;
+  const b = m && cleanBuy({ kind: m[1], name: m[3] });
+  if (!b || !BUY_QTYS.includes(qty)) return json({ type: 4, data: { flags: 64, content: 'Pedido inválido.' } });
+  await schema(env);
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM commands WHERE at < ?1').bind(now - 24 * 3600 * 1000),
+    env.DB.prepare('INSERT INTO commands (user, type, kind, name, qty, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(user, 'buy', b.kind, b.name, qty, now)
+  ]);
+  const seen = await env.DB.prepare('SELECT at FROM seen WHERE user = ?1').bind(user).first();
+  const online = seen && now - seen.at < 10 * 60 * 1000;
+  return done(online ? `Pedido enviado: ${qty.toLocaleString('pt-BR')} ${b.name} (o app compra em até 1 min)` : `Na fila: ${qty.toLocaleString('pt-BR')} ${b.name} (o app parece desligado; vale por 30 min)`, online ? 3 : 2);
+}
+
+async function commands(req, env) {
+  const auth = req.headers.get('authorization') || '';
+  const ses = await verify(env, auth.replace(/^Bearer\s+/i, ''));
+  if (!ses || !ses.u) return json({ ok: false, error: 'reconecte o Discord no app' }, 401);
+  await schema(env);
+  const now = Date.now();
+  const { results } = await env.DB.prepare('SELECT id, type, kind, name, qty FROM commands WHERE user = ?1 AND done = 0 AND at >= ?2 ORDER BY id LIMIT 5').bind(ses.u, now - 30 * 60 * 1000).all();
+  if (results.length) await env.DB.prepare(`UPDATE commands SET done = 1 WHERE user = ?1 AND id IN (${results.map((_, i) => '?' + (i + 2)).join(',')})`).bind(ses.u, ...results.map((r) => r.id)).run();
+  return json({ ok: true, commands: results });
 }
 
 async function summary(env, user, hours) {

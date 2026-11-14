@@ -467,6 +467,42 @@ async function autoBuyBalls(p, balls) {
     }
   } finally { autoBuyBusy = false; }
 }
+// ---------- Compras pedidas pelo Discord (botões do alerta de itens) ----------
+// O servidor não alcança o PC: o app pergunta a cada 45 s se tem pedido na fila (vale 30 min).
+let cmdBusy = false;
+async function pollCommands() {
+  if (cmdBusy || !ALERT_SERVER || !state.alertSession) return;
+  cmdBusy = true;
+  try {
+    const res = await net.fetch(`${ALERT_SERVER}/commands`, { headers: { authorization: `Bearer ${state.alertSession}` } });
+    if (!res.ok) return;
+    const { commands = [] } = await res.json().catch(() => ({}));
+    for (const c of commands.slice(0, 3)) {
+      if (c.type !== 'buy' || !['ball', 'potion'].includes(c.kind)) continue;
+      const p = panels.get('game');
+      if (!p || !kick.gameBuyItem) continue;
+      while (autoBuyBusy) await new Promise((r) => setTimeout(r, 1000));
+      autoBuyBusy = true;
+      let r;
+      try { r = await p.view.webContents.executeJavaScript(kick.gameBuyItem(c.kind, c.name, c.qty), true); } catch (err) { r = { ok: false, error: err.message }; } finally { autoBuyBusy = false; }
+      r = r || { ok: false, error: 'sem resposta' };
+      const fmt = (v) => (v == null ? '?' : Number(v).toLocaleString('pt-BR'));
+      if (r.ok) {
+        const body = `Comprei ${fmt(r.bought)} ${c.name} por ${fmt(r.bought * (r.price || 0))} de ouro. Agora você tem ${fmt(r.after)}.`;
+        log(`[compra] pedido do Discord: ${body}`);
+        send('toast', { title: `${c.name}: compra feita`, body, platform: 'ok' });
+        notifyPhone({ title: `Comprei ${fmt(r.bought)} ${c.name}`, description: body + (r.bought < c.qty ? `\n(Pedido era ${fmt(c.qty)}; parei na metade do seu ouro.)` : ''), color: 0x53fc18 });
+        if (stats.itemAlerts) Object.keys(stats.itemAlerts).forEach((k) => k.endsWith(':' + c.name) && delete stats.itemAlerts[k]);
+      } else {
+        const why = r.error === 'sem ouro' ? `ouro insuficiente (${fmt(r.gold)}, custa ${fmt(r.price)} cada)` : r.error;
+        log(`[compra] pedido do Discord falhou: ${why}`);
+        notifyPhone({ title: `Não consegui comprar ${c.name}`, description: why, color: 0xe5484d });
+      }
+    }
+  } catch (err) {
+    log(`[compra] falha ao buscar pedidos: ${err.message}`);
+  } finally { cmdBusy = false; }
+}
 // ---------- Alertas no celular (webhook do Discord) ----------
 // O link do webhook fica só no state.json local; nunca vai pro log nem pro repositório.
 const DISCORD_RE = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,25}\/[\w-]{20,100}$/;
@@ -475,12 +511,12 @@ const DISCORD_ID_RE = /^\d{17,20}$/;
 // Servidor de alertas (Cloudflare Worker): login entra no servidor do Discord e os alertas
 // vão pra thread privada da pessoa. Sem ele, cai no webhook próprio (modo avançado).
 const ALERT_SERVER = /^https:\/\/[\w.-]+(:\d+)?$/.test(String(config.alertServer || '')) ? String(config.alertServer).replace(/\/$/, '') : '';
-async function notifyServer({ title, description, color, image, fields, mention }) {
+async function notifyServer({ title, description, color, image, fields, mention, buy }) {
   try {
     const res = await net.fetch(`${ALERT_SERVER}/alert`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${state.alertSession}` },
-      body: JSON.stringify({ embed: { title, description, color, fields }, image: typeof image === 'string' ? image : undefined, mention: mention !== false })
+      body: JSON.stringify({ embed: { title, description, color, fields }, image: typeof image === 'string' ? image : undefined, mention: mention !== false, buy })
     });
     const r = await res.json().catch(() => ({}));
     if (res.ok && r.ok) return { ok: true };
@@ -495,12 +531,12 @@ async function notifyServer({ title, description, color, image, fields, mention 
     return { ok: false, error: 'sem conexão com o servidor de alertas' };
   }
 }
-async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, image, fields, mention = false, url }) {
+async function notifyPhone({ title, description, color = 0xf5a524, thumbnail, image, fields, mention = false, url, buy }) {
   const wait0 = discordLastSend + 1500 - Date.now();
   if (!url && ALERT_SERVER && state.alertSession) {
     if (wait0 > 0) await new Promise((r) => setTimeout(r, wait0));
     discordLastSend = Date.now();
-    return notifyServer({ title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, image, fields, mention });
+    return notifyServer({ title: String(title).slice(0, 256), description: String(description || '').slice(0, 2000), color, image, fields, mention, buy });
   }
   url = url || state.discordWebhook;
   if (!url || !DISCORD_RE.test(url)) return { ok: false, error: ALERT_SERVER ? 'Clique em Conectar Discord primeiro.' : 'sem webhook' };
@@ -711,7 +747,7 @@ async function captureAlert(c, img) {
   if (c.shiny) fields.push({ name: 'Shiny', value: '✨ Sim' });
   await notifyPhone({ title: `Capturou ${head}!`, description: c.time ? `Capturado às ${c.time}` : '', color: c.shiny ? 0xffd166 : 0x53fc18, fields, image: img, mention: true });
 }
-function itemAlert(key, title, body) {
+function itemAlert(key, title, body, buy) {
   stats.itemAlerts = stats.itemAlerts || {};
   if (stats.itemAlerts[key]) return;
   stats.itemAlerts[key] = true;
@@ -722,7 +758,7 @@ function itemAlert(key, title, body) {
     n.on('click', () => { win.show(); win.focus(); });
     n.show();
   }
-  if (state.discordItems !== false) notifyPhone({ title, description: body, color: 0xe5484d });
+  if (state.discordItems !== false) notifyPhone({ title, description: buy && ALERT_SERVER && state.alertSession ? `${body}\nQuer comprar mais? Toque num botão e o app compra pelo Market (nunca mais da metade do seu ouro).` : body, color: 0xe5484d, buy, mention: !!buy });
 }
 function checkItems(kind, list, o) {
   stats.itemAlerts = stats.itemAlerts || {};
@@ -732,8 +768,9 @@ function checkItems(kind, list, o) {
     if (x.qty === null) continue;
     const before = prev[x.name];
     const k0 = `${kind}:zero:${x.name}`, kl = `${kind}:low:${x.name}`;
-    if (x.qty === 0) { if (before > 0) itemAlert(k0, `${x.name} acabou`, o.body); }
-    else if (x.qty < o.limit) { delete stats.itemAlerts[k0]; if (before === undefined || before > x.qty) itemAlert(kl, `${x.name} acabando (${x.qty})`, `Restam ${x.qty}. ${o.body}`); }
+    const buy = x.on ? { kind, name: x.name } : undefined; // botão de comprar só pro item ligado no automático
+    if (x.qty === 0) { if (before > 0) itemAlert(k0, `${x.name} acabou`, o.body, buy); }
+    else if (x.qty < o.limit) { delete stats.itemAlerts[k0]; if (before === undefined || before > x.qty) itemAlert(kl, `${x.name} acabando (${x.qty})`, `Restam ${x.qty}. ${o.body}`, buy); }
     else { delete stats.itemAlerts[k0]; delete stats.itemAlerts[kl]; }
   }
   const enabled = list.filter((x) => x.on);
@@ -1558,6 +1595,7 @@ app.whenReady().then(async () => {
   setInterval(checkCaptures, 10000);
   setTimeout(syncCaptures, 60 * 1000);
   setInterval(syncCaptures, 5 * 60 * 1000);
+  setInterval(pollCommands, 45 * 1000);
   setTimeout(sampleGameStats, 15000);
 });
 
