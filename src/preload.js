@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('farm', {
   discordDisconnect: () => ipcRenderer.invoke('discord-disconnect'),
   discordOpenThread: () => ipcRenderer.invoke('discord-open-thread'),
   discordItems: (on) => ipcRenderer.invoke('discord-items', on),
+  autoBuyGet: () => ipcRenderer.invoke('autobuy-get'),
+  autoBuySet: (o) => ipcRenderer.invoke('autobuy-set', o),
   toggleWatchdog: () => ipcRenderer.send('toggle-watchdog'),
   on: (channel, fn) => {
     const allowed = ['panel-status', 'extensions', 'window-state', 'global-status', 'streams-changed', 'toast', 'metrics', 'game-stats', 'toggle-focus', 'shortcut'];

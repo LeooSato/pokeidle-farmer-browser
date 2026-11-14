@@ -192,6 +192,19 @@
         </label>
       </section>
 
+      <section class="mgr-buy">
+        <label class="mgr-opt">
+          <input id="ab-on" type="checkbox">
+          <span class="switch"></span>
+          <span><b>Comprar pokébola sozinho</b><small>Compra pelo Market do jogo, no máximo 1 vez a cada 30 min e nunca gastando mais da metade do seu ouro. Avisa no Discord a cada compra.</small></span>
+        </label>
+        <div class="ab-row">
+          <label class="ph-field"><span>Bola</span><select id="ab-ball"></select></label>
+          <label class="ph-field"><span>Quando tiver menos de</span><input id="ab-min" type="number" min="0" max="100000" step="50"></label>
+          <label class="ph-field"><span>Comprar</span><input id="ab-qty" type="number" min="1" max="9999" step="50"></label>
+        </div>
+      </section>
+
       <footer class="sheet-foot">
         <button id="mgr-reset" class="action">Restaurar padrão</button>
         <span class="spacer"></span>

@@ -234,4 +234,59 @@ const gameCaptureHist = () => `(() => {
   return out;
 })()`;
 
-module.exports = { gameCaptures, gameCaptureHist, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+// Compra de pokébola pelo próprio Market do jogo: abre o modal, aba Comprar, categoria Pokebolas,
+// acha o card pelo nome, põe a quantidade e clica em Comprar. Confere pelo "você tem ×N" do card.
+// Devolve { ok, before, after, gold, price, error }. Só fecha o modal se foi ele que abriu.
+const gameBuyBall = (name, qty) => `(async () => {
+  const want = ${JSON.stringify(String(name))}.toLowerCase();
+  const qty = ${Math.max(1, Math.min(9999, Math.floor(Number(qty) || 0)))};
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const n = (t) => { const v = Number(String(t || '').replace(/[^\\d]/g, '')); return Number.isFinite(v) ? v : null; };
+  const card = () => [...document.querySelectorAll('.mk-card')].find((c) => {
+    const e = c.querySelector('.mk-nome'); return e && ((e.getAttribute('title') || e.textContent).trim().toLowerCase() === want);
+  });
+  const until = async (fn, ms = 5000) => { for (let t = 0; t < ms; t += 150) { const v = fn(); if (v) return v; await sleep(150); } return null; };
+  const modal = () => document.querySelector('.modal-caixa[data-modal="market"]');
+  let opened = false;
+  try {
+    if (!modal() || !card()) {
+      const btn = document.querySelector('button[data-modal="market"]');
+      if (!btn) return { ok: false, error: 'botão Market não encontrado' };
+      btn.click(); opened = true;
+      if (!await until(() => document.querySelector('#mk-modos'))) return { ok: false, error: 'Market não abriu' };
+    }
+    const tab = document.querySelector('#mk-modos [data-aba="compra"]');
+    if (tab && !tab.classList.contains('on')) { tab.click(); await sleep(400); }
+    if (!card()) {
+      const cat = [...document.querySelectorAll('.mk-cat')].find((b) => /pokebola|pokébola|bola/i.test(b.textContent));
+      if (cat) { cat.click(); await sleep(400); }
+    }
+    const c = await until(card);
+    if (!c) return { ok: false, error: 'card da ' + want + ' não encontrado' };
+    const gold = n((document.querySelector('#mk-saldo') || {}).textContent);
+    const price = n((c.querySelector('.mk-pal-preco .mk-moeda') || {}).textContent);
+    const before = n((c.querySelector('.mk-tem') || {}).getAttribute && c.querySelector('.mk-tem').getAttribute('data-tem'));
+    let buy = qty;
+    // nunca gasta mais que metade do ouro numa compra
+    if (gold != null && price) buy = Math.min(qty, Math.floor(gold * 0.5 / price));
+    if (buy < 1) return { ok: false, error: 'sem ouro', gold, price, before };
+    const input = c.querySelector('.mk-qtd input');
+    if (!input) return { ok: false, error: 'campo de quantidade não encontrado' };
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(input, String(buy));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep(250);
+    const go = c.querySelector('.mk-pal-comprar, .mk-acao');
+    if (!go) return { ok: false, error: 'botão Comprar não encontrado' };
+    go.click();
+    const after = await until(() => { const k = card(); const v = k && n(k.querySelector('.mk-tem') && k.querySelector('.mk-tem').getAttribute('data-tem')); return v != null && v !== before ? v : null; }, 6000);
+    return { ok: after != null && after > (before || 0), before, after, bought: buy, gold, price, error: after == null ? 'a compra não confirmou (pode ter aparecido uma confirmação)' : null };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  } finally {
+    if (opened) { await sleep(300); const x = document.querySelector('#modal-fechar'); if (x) x.click(); }
+  }
+})()`;
+
+module.exports = { gameCaptures, gameCaptureHist, gameBuyBall, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

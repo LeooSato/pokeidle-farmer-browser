@@ -1,6 +1,13 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.13',
+    date: '14/11/2026',
+    items: [
+      'Compra automática de pokébola (desligada por padrão, em Alertas): quando a bola escolhida fica abaixo do mínimo, o app compra pelo Market do jogo. No máximo 1 vez a cada 30 min, nunca gasta mais da metade do ouro e avisa no Discord a cada compra.'
+    ]
+  },
+  {
     version: '1.0.12',
     date: '14/11/2026',
     items: [

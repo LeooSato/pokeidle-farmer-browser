@@ -144,6 +144,7 @@
     $('#ph-url').value = '';
     $('#ph-url').placeholder = d.set ? `Configurado (${d.label}). Cole outro link pra trocar.` : 'https://discord.com/api/webhooks/…';
     $('#ph-items').checked = d.items;
+    abRefresh();
     $('#ph-uid').value = d.userId;
     $('#ph-who').textContent = d.userName ? `conectado como ${d.userName}` : 'conecte o Discord ou cole o ID';
     $('#ph-min').value = d.minScore;
@@ -203,6 +204,21 @@
   $('#ph-connect').addEventListener('click', phConnect);
   $('#ph-min').addEventListener('change', phPrefs);
   $('#ph-items').addEventListener('change', (e) => window.farm.discordItems(e.target.checked));
+
+  // ---------- Compra automática de pokébola ----------
+  async function abRefresh() {
+    const d = await window.farm.autoBuyGet();
+    const sel = $('#ab-ball');
+    if (!sel.options.length) d.balls.forEach((b) => sel.add(new Option(b, b)));
+    sel.value = d.ball; $('#ab-on').checked = d.on; $('#ab-min').value = d.min; $('#ab-qty').value = d.qty;
+    $('.mgr-buy').classList.toggle('off', !d.on);
+  }
+  async function abSave() {
+    const d = await window.farm.autoBuySet({ on: $('#ab-on').checked, ball: $('#ab-ball').value, min: $('#ab-min').value, qty: $('#ab-qty').value });
+    $('#ab-min').value = d.min; $('#ab-qty').value = d.qty;
+    $('.mgr-buy').classList.toggle('off', !d.on);
+  }
+  ['#ab-on', '#ab-ball', '#ab-min', '#ab-qty'].forEach((q) => $(q).addEventListener('change', abSave));
 
   // ---------- Perfis ----------
   async function renderProfiles() {

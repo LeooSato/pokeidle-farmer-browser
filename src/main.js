@@ -427,9 +427,45 @@ async function readItems(p) {
   let r;
   try { r = await p.view.webContents.executeJavaScript(kick.gameItems, true); } catch { return null; }
   if (!r) return null;
+  if (Array.isArray(r.balls)) autoBuyBalls(p, r.balls);
   if (Array.isArray(r.balls)) checkItems('ball', r.balls, { all: 'Pokébolas acabaram', allBody: 'Todas as pokébolas ligadas no automático estão zeradas. Compre mais na loja.', body: 'Compre mais na loja pra continuar capturando.', limit: state.ballsLow ?? 100 });
   if (Array.isArray(r.potions)) checkItems('potion', r.potions, { all: 'Potions acabaram', allBody: 'Todas as potions do uso automático estão zeradas.', body: 'Compre mais potions pra equipe não desmaiar.', limit: state.potionsLow ?? 100 });
   return r;
+}
+// ---------- Compra automática de pokébola (desligada por padrão) ----------
+// Quando a bola escolhida fica abaixo do mínimo, compra pelo próprio Market do jogo, no máximo
+// uma vez a cada 30 min e só com ouro suficiente. Clique normal no botão do jogo: não explora
+// falha, não burla limite e não sobrecarrega o servidor (termos do PokeIdle, seção 6, item 6).
+const BALL_NAMES = ['Poke Ball', 'Great Ball', 'Super Ball', 'Ultra Ball'];
+const autoBuyDefaults = () => ({ on: false, ball: 'Ultra Ball', min: 500, qty: 1000 });
+const autoBuyCfg = () => ({ ...autoBuyDefaults(), ...(state.autoBuy || {}) });
+let autoBuyBusy = false, autoBuyLast = 0, autoBuyFails = 0;
+async function autoBuyBalls(p, balls) {
+  const cfg = autoBuyCfg();
+  if (!cfg.on || autoBuyBusy || !kick.gameBuyBall) return;
+  const ball = balls.find((b) => String(b.name).toLowerCase() === cfg.ball.toLowerCase());
+  if (!ball || ball.qty == null || ball.qty >= cfg.min) return;
+  const gap = autoBuyFails ? Math.min(4, autoBuyFails) * 30 * 60000 : 30 * 60000;
+  if (Date.now() - autoBuyLast < gap) return;
+  autoBuyBusy = true; autoBuyLast = Date.now();
+  try {
+    let r;
+    try { r = await p.view.webContents.executeJavaScript(kick.gameBuyBall(cfg.ball, cfg.qty), true); } catch (err) { r = { ok: false, error: err.message }; }
+    r = r || { ok: false, error: 'sem resposta' };
+    const fmt = (v) => (v == null ? '?' : Number(v).toLocaleString('pt-BR'));
+    if (r.ok) {
+      autoBuyFails = 0;
+      const body = `Comprei ${fmt(r.bought)} ${cfg.ball} por ${fmt(r.bought * (r.price || 0))} de ouro. Agora você tem ${fmt(r.after)}.`;
+      log(`[compra] ${body}`);
+      send('toast', { title: 'Pokébolas compradas', body, platform: 'ok' });
+      if (state.discordItems !== false) notifyPhone({ title: `Comprei ${fmt(r.bought)} ${cfg.ball}`, description: body, color: 0x53fc18 });
+    } else {
+      autoBuyFails++;
+      const why = r.error === 'sem ouro' ? `ouro insuficiente (${fmt(r.gold)}, a ${cfg.ball} custa ${fmt(r.price)})` : r.error;
+      log(`[compra] falhou: ${why}`);
+      if (autoBuyFails === 1) notifyFarm('Compra automática falhou', `Não consegui comprar ${cfg.ball}: ${why}. Tento de novo mais tarde.`, 0xe5484d);
+    }
+  } finally { autoBuyBusy = false; }
 }
 // ---------- Alertas no celular (webhook do Discord) ----------
 // O link do webhook fica só no state.json local; nunca vai pro log nem pro repositório.
@@ -1286,6 +1322,21 @@ function registerIpc() {
   handle('discord-disconnect', () => { state.alertSession = undefined; state.alertThread = undefined; state.discordUserName = undefined; saveState(); return true; });
   handle('discord-open-thread', () => { if (state.alertThread) shell.openExternal(state.alertThread); return true; });
   handle('discord-items', (_e, on) => { state.discordItems = !!on; saveState(); return true; });
+  handle('autobuy-get', () => ({ ...autoBuyCfg(), balls: BALL_NAMES }));
+  handle('autobuy-set', (_e, o) => {
+    const cur = autoBuyCfg();
+    const int = (v, lo, hi, d) => { const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+    state.autoBuy = {
+      on: o && typeof o.on === 'boolean' ? o.on : cur.on,
+      ball: o && BALL_NAMES.includes(o.ball) ? o.ball : cur.ball,
+      min: int(o && o.min, 0, 100000, cur.min),
+      qty: int(o && o.qty, 1, 9999, cur.qty)
+    };
+    autoBuyFails = 0; autoBuyLast = 0;
+    saveState();
+    log(`[compra] ${state.autoBuy.on ? `ligada: ${state.autoBuy.ball} abaixo de ${state.autoBuy.min}, compra ${state.autoBuy.qty}` : 'desligada'}`);
+    return state.autoBuy;
+  });
   handle('discord-test', (_e, url) => {
     url = String(url || '').trim();
     if (!url && ALERT_SERVER && state.alertSession) return notifyPhone({ mention: true, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui, só pra você.', color: 0x53fc18 });
