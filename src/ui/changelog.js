@@ -1,6 +1,13 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.14',
+    date: '14/11/2026',
+    items: [
+      'Versões de teste (beta): na bandeja, marque "Receber versões de teste (beta)" pra receber as novidades antes de todo mundo. A versão aparece em laranja com "beta" na barra superior.'
+    ]
+  },
+  {
     version: '1.0.13',
     date: '14/11/2026',
     items: [

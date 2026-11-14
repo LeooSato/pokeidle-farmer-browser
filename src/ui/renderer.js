@@ -250,10 +250,11 @@ function openWelcome() {
 }
 function openNews(version, from) {
   const list = window.CHANGELOG || [];
+  const base = String(version || '').split('-')[0]; // 1.0.14-beta.3 → 1.0.14
   $('#news-sub').textContent = from ? `Atualizado da v${from} pra v${version}` : `Você está na v${version}`;
   $('#news-list').innerHTML = list.map((v, i) => `
-    <section class="news-ver ${v.version === version ? 'current' : ''}">
-      <h3>v${esc(v.version)}${v.version === version ? '<em>atual</em>' : ''}<small>${esc(v.date || '')}</small></h3>
+    <section class="news-ver ${v.version === base ? 'current' : ''}">
+      <h3>v${esc(v.version)}${v.version === base ? '<em>atual</em>' : ''}<small>${esc(v.date || '')}</small></h3>
       <ul>${v.items.map((it) => `<li>${esc(it)}</li>`).join('')}</ul>
     </section>`).join('');
   const close = openSheet('news');
@@ -327,7 +328,11 @@ async function init() {
   const setup = await window.farm.getSetup();
   split = setup.split;
   $('.brand-name').title = `PokeIdle Farm v${setup.version || ''} · clique pra ver as novidades`;
-  $('#app-ver').textContent = setup.version ? `v${setup.version}` : '';
+  {
+    const m = String(setup.version || '').match(/^([\d.]+)(?:-beta\.?(\d+))?/);
+    $('#app-ver').textContent = m ? `v${m[1]}${m[2] ? ` beta ${m[2]}` : ''}` : '';
+    $('#app-ver').classList.toggle('beta', !!(m && m[2]));
+  }
 
   $('#left').append(buildPanel(setup.game, 'game'));
   resizeObs = new ResizeObserver(sendLayout);

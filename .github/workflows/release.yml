@@ -3,6 +3,10 @@
 # Como usar: suba a versão no package.json, faça push na main e rode o workflow
 # (Actions → Release → Run workflow) ou crie a tag (git tag v1.0.1 && git push --tags).
 #
+# Beta: rode com "beta" marcado. Sai como pré-release v<versão>-beta.<n> e só chega em quem
+# ligou "Receber versões de teste (beta)" na bandeja. Depois de testar, rode de novo sem
+# marcar pra lançar a versão normal pra todo mundo.
+#
 # Assinatura (SignPath Foundation): depois que o projeto for aprovado, crie em
 # Settings → Secrets and variables → Actions:
 #   secret   SIGNPATH_API_TOKEN        (token do usuário CI no SignPath)
@@ -14,6 +18,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      beta:
+        description: 'Versão de teste (só pra quem ligou o beta no app)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,6 +39,13 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Versão beta
+        if: inputs.beta == true
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          npm version "$V-beta.${{ github.run_number }}" --no-git-tag-version --allow-same-version
+          node -p "require('./package.json').version"
       # Só gera os arquivos; quem publica é o último passo.
       - run: npm run dist
 
@@ -72,10 +88,18 @@ jobs:
         run: |
           V=$(node -p "require('./package.json').version")
           TAG="v$V"
-          FILES=(dist/PokeIdle-Farm-Setup-$V.exe dist/PokeIdle-Farm-Setup-$V.exe.blockmap dist/PokeIdle-Farm-Portatil-$V.exe dist/latest.yml)
+          # o mesmo arquivo com os dois nomes: o updater pode pedir latest.yml ou beta.yml
+          cp dist/latest.yml dist/beta.yml
+          FILES=(dist/PokeIdle-Farm-Setup-$V.exe dist/PokeIdle-Farm-Setup-$V.exe.blockmap dist/PokeIdle-Farm-Portatil-$V.exe dist/latest.yml dist/beta.yml)
           ls -l "${FILES[@]}"
+          PRE=()
+          if [ "${{ inputs.beta }}" = "true" ]; then PRE=(--prerelease); fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${FILES[@]}" --clobber
           else
-            gh release create "$TAG" "${FILES[@]}" --title "$V" --target "$GITHUB_SHA" --generate-notes
+            gh release create "$TAG" "${FILES[@]}" --title "$V" --target "$GITHUB_SHA" --generate-notes "${PRE[@]}"
           fi
+          {
+            echo "### $V publicada"
+            if [ "${{ inputs.beta }}" = "true" ]; then echo "Pré-release: só chega em quem ligou o beta no app."; fi
+          } >> "$GITHUB_STEP_SUMMARY"

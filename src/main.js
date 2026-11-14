@@ -972,10 +972,19 @@ async function checkStream(p) {
 // ---------------------------------------------------------------------------
 let updater = null;
 let updateReady = null; // versão baixada
+const IS_BETA = /-beta/.test(app.getVersion());
+function setBetaUpdates(on) {
+  state.betaUpdates = !!on; saveState();
+  log(`[update] versões de teste ${on ? 'ligadas' : 'desligadas'}`);
+  if (updater) { updater.allowPrerelease = IS_BETA || !!on; updater.checkForUpdates().catch(() => {}); }
+  send('toast', { title: on ? 'Versões de teste ligadas' : 'Versões de teste desligadas', body: on ? 'Você vai receber as betas antes de todo mundo. Se algo quebrar, me avise.' : (IS_BETA ? 'Você volta pra versão normal quando sair a próxima.' : 'Só versões normais daqui pra frente.'), platform: 'ok' });
+}
 function startAutoUpdate() {
   if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return; // versão portátil não se atualiza sozinha
   try { updater = require('electron-updater').autoUpdater; } catch (e) { log(`[update] indisponível: ${e.message}`); return; }
   updater.autoDownload = true;
+  // Beta: versão de teste (pré-release no GitHub). Quem já está numa beta continua recebendo.
+  updater.allowPrerelease = IS_BETA || state.betaUpdates === true;
   updater.autoInstallOnAppQuit = true;
   updater.logger = { info: (m) => log(`[update] ${m}`), warn: (m) => log(`[update] ${m}`), error: (m) => log(`[update] erro: ${m}`), debug: () => {} };
   updater.on('update-available', (i) => send('toast', { title: `Nova versão ${i.version}`, body: 'baixando em segundo plano…', platform: 'ok' }));
@@ -1256,6 +1265,7 @@ function buildTrayMenu() {
       state.hideChat = i.checked; saveState();
       panels.forEach((p) => p.kind === 'stream' && !p.sleeping && reloadPanel(p, 'chat ' + (i.checked ? 'escondido' : 'visível'), { auto: false }));
     } },
+    { label: 'Receber versões de teste (beta)', type: 'checkbox', checked: state.betaUpdates === true, click: (i) => setBetaUpdates(i.checked) },
     { label: 'Recarregar lives', click: () => panels.forEach((p) => p.kind === 'stream' && reloadPanel(p, 'bandeja', { auto: false })) },
     { label: 'Salvar print do jogo (Ctrl+S)', click: () => screenshotGame() },
     { type: 'separator' },

@@ -510,3 +510,5 @@ button.brand-name b { margin-left: -1px; }
 .ab-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 10px; }
 .mgr-buy.off .ab-row { opacity: .5; }
 .ph-field select { height: 34px; padding: 0 8px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: inherit; outline: none; }
+
+.ver-pill.beta { background: rgba(245, 165, 36, .18); color: #f5a524; border-color: rgba(245, 165, 36, .45); }
