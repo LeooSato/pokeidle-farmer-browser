@@ -4,7 +4,8 @@ window.CHANGELOG = [
     version: '1.0.15',
     date: '14/11/2026',
     items: [
-      'Comprar pelo Discord: o aviso de pokébola ou potion acabando chega com os botões "Comprar 100", "Comprar 1.000" e "Agora não". Tocou, o app compra pelo Market em até 1 minuto e te responde na thread. Nunca gasta mais da metade do seu ouro.'
+      'Comando /comprar no Discord: por exemplo /comprar item:Potion quantidade:1000. O app compra pelo Market em até 1 minuto e responde na sua thread. "Potion" e "Pokébola" usam a que está ligada no automático do jogo, e ele nunca gasta mais da metade do seu ouro.',
+      'O aviso de pokébola ou potion acabando agora te marca no Discord e lembra do /comprar.'
     ]
   },
   {

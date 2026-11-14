@@ -6,8 +6,8 @@
 //                     e devolve ao app um "crachá" assinado (só vale pra thread dessa pessoa)
 //   POST /alert     → o app manda o alerta com o crachá e o bot posta na thread marcando a pessoa
 //   POST /captures  → o app manda as capturas (sem imagem) pra montar o /resumo; ficam só 48 h
-//   POST /interactions → comandos do Discord (/resumo) e botões "Comprar", assinados pelo Discord (Ed25519)
-//   GET  /commands  → o app busca os pedidos de compra feitos pelos botões (fila de 30 min)
+//   POST /interactions → comandos do Discord (/resumo e /comprar), assinados pelo Discord (Ed25519)
+//   GET  /commands  → o app busca os pedidos do /comprar (fila de 30 min)
 //
 // Não guarda token do Discord nem histórico de alertas. O KV só tem "id do usuário → id da thread";
 // o D1 só tem as capturas das últimas 48 h (nome, nível, nota, IV, Q, P, shiny) e o último contato do app.
@@ -154,12 +154,7 @@ async function alert(req, env) {
   try { body = await req.json(); } catch { return json({ ok: false, error: 'json inválido' }, 400); }
 
   const embed = cleanEmbed(body.embed || {});
-  const buy = cleanBuy(body.buy);
   const payload = { content: body.mention === false ? undefined : `<@${ses.u}>`, embeds: [embed], allowed_mentions: { parse: [], users: body.mention === false ? [] : [ses.u] } };
-  if (buy) payload.components = [{ type: 1, components: [
-    ...BUY_QTYS.map((q) => ({ type: 2, style: q === BUY_QTYS[0] ? 2 : 3, label: `Comprar ${q.toLocaleString('pt-BR')}`, custom_id: `buy|${buy.kind}|${q}|${buy.name}` })),
-    { type: 2, style: 2, label: 'Agora não', custom_id: 'skip' }
-  ] }];
   let png = null;
   if (typeof body.image === 'string' && body.image.startsWith('data:image/png;base64,')) {
     const bin = Uint8Array.from(atob(body.image.slice(22)), (c) => c.charCodeAt(0));
@@ -192,6 +187,33 @@ function cleanBuy(b) {
   if (!b || !['ball', 'potion'].includes(b.kind)) return null;
   const name = String(b.name || '').trim();
   return /^[\p{L}\p{N} .'()-]{2,40}$/u.test(name) ? { kind: b.kind, name } : null;
+}
+// /comprar item:<escolha> quantidade:<1..9999>. "auto" = a bola/potion ligada no automático do jogo.
+async function queueBuy(env, user, b, qty) {
+  await schema(env);
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM commands WHERE at < ?1').bind(now - 24 * 3600 * 1000),
+    env.DB.prepare('INSERT INTO commands (user, type, kind, name, qty, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(user, 'buy', b.kind, b.name, qty, now)
+  ]);
+  const seen = await env.DB.prepare('SELECT at FROM seen WHERE user = ?1').bind(user).first();
+  return !!(seen && now - seen.at < 10 * 60 * 1000);
+}
+async function buyCommand(env, it) {
+  const user = String((it.member && it.member.user && it.member.user.id) || (it.user && it.user.id) || '');
+  const opt = (n) => ((it.data.options || []).find((o) => o.name === n) || {}).value;
+  const [kind, ...rest] = String(opt('item') || '').split(':');
+  const name = rest.join(':') || 'auto';
+  const qty = Math.floor(Number(opt('quantidade')));
+  const b = cleanBuy({ kind, name });
+  const reply = (content) => json({ type: 4, data: { flags: 64, content } });
+  if (!b || !(qty >= 1 && qty <= 9999)) return reply('Pedido inválido. Use por exemplo `/comprar item:Potion quantidade:1000`.');
+  if (!(await env.THREADS.get(user))) return reply('Conecte o Discord no PokeIdle Farm primeiro (tela Alertas › Conectar Discord).');
+  const online = await queueBuy(env, user, b, qty);
+  const what = b.name === 'auto' ? (b.kind === 'ball' ? 'da pokébola do automático' : 'da potion do automático') : `de ${b.name}`;
+  return reply(online
+    ? `🛒 Pedido enviado: ${qty.toLocaleString('pt-BR')} ${what}. O app compra em até 1 min e avisa na sua thread. Ele nunca gasta mais da metade do seu ouro.`
+    : `⏳ Na fila: ${qty.toLocaleString('pt-BR')} ${what}. O app parece desligado; o pedido vale por 30 min.`);
 }
 function cleanEmbed(e) {
   const s = (v, n) => String(v == null ? '' : v).slice(0, n);
@@ -284,6 +306,7 @@ async function interactions(req, env) {
     const embed = await summary(env, user, hours);
     return json({ type: 4, data: { flags: 64, embeds: [embed], allowed_mentions: { parse: [] } } });
   }
+  if (it.type === 2 && it.data && it.data.name === 'comprar') return await buyCommand(env, it);
   if (it.type === 3 && it.data) return await button(env, it);
   return json({ type: 4, data: { flags: 64, content: 'Comando desconhecido.' } });
 }
@@ -300,14 +323,7 @@ async function button(env, it) {
   const qty = m ? Number(m[2]) : 0;
   const b = m && cleanBuy({ kind: m[1], name: m[3] });
   if (!b || !BUY_QTYS.includes(qty)) return json({ type: 4, data: { flags: 64, content: 'Pedido inválido.' } });
-  await schema(env);
-  const now = Date.now();
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM commands WHERE at < ?1').bind(now - 24 * 3600 * 1000),
-    env.DB.prepare('INSERT INTO commands (user, type, kind, name, qty, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(user, 'buy', b.kind, b.name, qty, now)
-  ]);
-  const seen = await env.DB.prepare('SELECT at FROM seen WHERE user = ?1').bind(user).first();
-  const online = seen && now - seen.at < 10 * 60 * 1000;
+  const online = await queueBuy(env, user, b, qty);
   return done(online ? `Pedido enviado: ${qty.toLocaleString('pt-BR')} ${b.name} (o app compra em até 1 min)` : `Na fila: ${qty.toLocaleString('pt-BR')} ${b.name} (o app parece desligado; vale por 30 min)`, online ? 3 : 2);
 }
 

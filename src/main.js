@@ -481,6 +481,13 @@ async function pollCommands() {
       if (c.type !== 'buy' || !['ball', 'potion'].includes(c.kind)) continue;
       const p = panels.get('game');
       if (!p || !kick.gameBuyItem) continue;
+      if (c.name === 'auto') { // a bola/potion que está ligada no automático do jogo
+        const items = await readItems(p);
+        const list = items && (c.kind === 'ball' ? items.balls : items.potions);
+        const on = Array.isArray(list) && (list.find((x) => x.on) || null);
+        if (!on) { notifyPhone({ title: 'Não consegui comprar', description: `Nenhuma ${c.kind === 'ball' ? 'pokébola' : 'potion'} ligada no automático do jogo. Use /comprar com o nome da bola.`, color: 0xe5484d }); continue; }
+        c.name = on.name;
+      }
       while (autoBuyBusy) await new Promise((r) => setTimeout(r, 1000));
       autoBuyBusy = true;
       let r;
@@ -758,7 +765,8 @@ function itemAlert(key, title, body, buy) {
     n.on('click', () => { win.show(); win.focus(); });
     n.show();
   }
-  if (state.discordItems !== false) notifyPhone({ title, description: buy && ALERT_SERVER && state.alertSession ? `${body}\nQuer comprar mais? Toque num botão e o app compra pelo Market (nunca mais da metade do seu ouro).` : body, color: 0xe5484d, buy, mention: !!buy });
+  const hint = buy && ALERT_SERVER && state.alertSession ? `\nPra comprar daqui: \`/comprar item:${buy.kind === 'ball' ? 'Pokébola' : 'Potion'} quantidade:1000\`` : '';
+  if (state.discordItems !== false) notifyPhone({ title, description: body + hint, color: 0xe5484d, mention: !!buy });
 }
 function checkItems(kind, list, o) {
   stats.itemAlerts = stats.itemAlerts || {};
