@@ -15,6 +15,12 @@ CHANNEL_ID = ""
 binding = "THREADS"
 id = "ac48c8344b684078977dbe7004b7536e"
 
+# Capturas das últimas 48 h, para o comando /resumo.
+[[d1_databases]]
+binding = "DB"
+database_name = "pokeidle-farm-captures"
+database_id = "941a02bc-ea98-456c-8125-e07701ec53fd"
+
 # Segredos (nunca no repositório), definidos com `npx wrangler secret put <NOME>`:
 #   CLIENT_SECRET  - OAuth2 > Client Secret
 #   BOT_TOKEN      - Bot > Token

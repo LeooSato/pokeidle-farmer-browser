@@ -1,6 +1,15 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.11',
+    date: '14/11/2026',
+    items: [
+      'Comando /resumo no Discord: digite /resumo no servidor do PokeIdle Farm e veja quantos pokémon de cada espécie você capturou, os 3 melhores por nota, os shiny e a nota média. Dá pra escolher as horas, por exemplo /resumo horas:3. Só você vê a resposta.',
+      'O /resumo também avisa se o app está desligado ou se o farm parou de capturar, mesmo com você longe do PC.',
+      'Pra funcionar, o app manda suas capturas (só os números, sem imagem) pro servidor de alertas, que guarda as das últimas 48 h. Precisa estar com o Discord conectado em Alertas.'
+    ]
+  },
+  {
     version: '1.0.10',
     date: '13/11/2026',
     items: [

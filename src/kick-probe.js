@@ -214,4 +214,24 @@ const gameCaptures = (sprite) => `(() => {
   }).filter((x) => x.k && x.name);
 })()`;
 
-module.exports = { gameCaptures, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+// Histórico que o próprio jogo guarda (localStorage "capturas-hist:<nick>", ~últimas 18). Não tem nota,
+// mas pega captura que não aparece no painel. A chave bate com o data-k do painel: "<em>:<id>".
+const gameCaptureHist = () => `(() => {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!/^capturas-hist:/.test(key)) continue;
+      const list = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(list)) continue;
+      for (const c of list.slice(0, 200)) {
+        if (!c || !c.em || c.id == null || !c.nome) continue;
+        const ivs = c.ivs && typeof c.ivs === 'object' ? Object.values(c.ivs).reduce((a, b) => a + (Number(b) || 0), 0) : null;
+        out.push({ k: c.em + ':' + c.id, t: Number(c.em), name: String(c.nome), level: c.level, iv: ivs, q: c.quality, pot: c.potencia, shiny: c.shiny === true });
+      }
+    }
+  } catch (e) {}
+  return out;
+})()`;
+
+module.exports = { gameCaptures, gameCaptureHist, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

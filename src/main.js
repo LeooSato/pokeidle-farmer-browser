@@ -531,7 +531,7 @@ function discordConnect() {
         let uid = '';
         try { uid = String(JSON.parse(Buffer.from(ses.split('.')[0], 'base64url').toString('utf8')).u || ''); } catch { /* ignora */ }
         if (!DISCORD_ID_RE.test(uid)) return finish({ ok: false, error: 'Resposta inválida do servidor.' });
-        state.alertSession = ses;
+        state.alertSession = ses; setTimeout(syncCaptures, 3000);
         state.discordUserId = uid;
         state.discordUserName = String(q.get('name') || '').slice(0, 40);
         state.alertThread = /^\d{17,20}$/.test(q.get('thread') || '') && /^\d{17,20}$/.test(q.get('guild') || '') ? `https://discord.com/channels/${q.get('guild')}/${q.get('thread')}` : undefined;
@@ -585,6 +585,7 @@ async function checkCaptures() {
     let list;
     try { list = await p.view.webContents.executeJavaScript(kick.gameCaptures(false), true); } catch { return; }
     if (!Array.isArray(list)) return;
+    queueCaptures(list);
     const fresh = list.filter((c) => !capSeen.has(c.k));
     fresh.forEach((c) => capSeen.add(c.k));
     if (!capReady) { capReady = true; capSince = Date.now(); return; }
@@ -604,6 +605,52 @@ async function checkCaptures() {
     }
     for (const c of hits.slice(0, 5)) await captureAlert(c, (withImg.find((x) => x.k === c.k) || {}).img);
   } finally { capBusy = false; }
+}
+// ---------- Capturas pro /resumo do Discord ----------
+// Toda captura (sem imagem) vai pro servidor de alertas, que guarda 48 h pra montar o /resumo.
+// Só com o Discord conectado no modo servidor. A cada 5 min manda o que tiver (vale como "app ligado").
+const capQueue = new Map();
+const capSent = new Set();
+function queueCaptures(list) {
+  for (const c of list || []) {
+    if (!c || !c.k || capSent.has(c.k)) continue;
+    const t = Number(c.t) || Number(String(c.k).split(':')[0]);
+    if (!(t > 1e12) || Date.now() - t > 48 * 3600 * 1000) continue;
+    const prev = capQueue.get(c.k) || {};
+    capQueue.set(c.k, { k: c.k, t, name: c.name || prev.name, level: c.level ?? prev.level, nota: c.nota ?? prev.nota, iv: c.iv ?? prev.iv, q: c.q ?? prev.q, pot: c.pot ?? prev.pot, shiny: !!(c.shiny || prev.shiny) });
+  }
+}
+let capSyncBusy = false;
+async function syncCaptures() {
+  if (capSyncBusy || !ALERT_SERVER || !state.alertSession) return;
+  capSyncBusy = true;
+  try {
+    const p = panels.get('game');
+    if (p && !p.view.webContents.isLoading() && kick.gameCaptureHist) {
+      try {
+        const hist = await p.view.webContents.executeJavaScript(kick.gameCaptureHist(), true);
+        // linha do histórico sem nota: espera o painel completar se ela ainda estiver lá
+        queueCaptures((hist || []).filter((h) => !capQueue.has(h.k)));
+      } catch {}
+    }
+    const caps = [...capQueue.values()].slice(0, 100);
+    const res = await net.fetch(`${ALERT_SERVER}/captures`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${state.alertSession}` },
+      body: JSON.stringify({ ver: app.getVersion(), caps })
+    });
+    if (res.ok) {
+      for (const c of caps) {
+        // sem nota ainda: deixa na fila mais um pouco pra mandar de novo com a nota do painel
+        if (c.nota == null && Date.now() - c.t < 30 * 60 * 1000) continue;
+        capQueue.delete(c.k); capSent.add(c.k);
+      }
+    } else if (res.status === 401 || res.status === 410) {
+      log(`[resumo] servidor recusou o crachá (${res.status})`);
+    }
+  } catch (err) {
+    log(`[resumo] falha ao sincronizar capturas: ${err.message}`);
+  } finally { capSyncBusy = false; }
 }
 async function captureAlert(c, img) {
   const head = `${c.shiny ? '✨ Shiny ' : ''}${c.name}${c.level ? ` Nv ${c.level}` : ''}`;
@@ -1413,6 +1460,8 @@ app.whenReady().then(async () => {
   setInterval(pollSleeping, SLEEP_POLL_MS);
   setInterval(sampleGameStats, 30000);
   setInterval(checkCaptures, 10000);
+  setTimeout(syncCaptures, 60 * 1000);
+  setInterval(syncCaptures, 5 * 60 * 1000);
   setTimeout(sampleGameStats, 15000);
 });
 

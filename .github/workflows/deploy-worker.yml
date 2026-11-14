@@ -88,6 +88,28 @@ jobs:
           printf '%s' "$CLIENT_SECRET" | npx wrangler secret put CLIENT_SECRET
           printf '%s' "$BOT_TOKEN" | npx wrangler secret put BOT_TOKEN
 
+      - name: Registrar /resumo e o endpoint de interações no Discord
+        id: discord
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="${{ steps.deploy.outputs.url }}"
+          APP=$(grep -E '^CLIENT_ID' wrangler.toml | grep -oE '[0-9]{17,20}')
+          GUILD=$(grep -E '^GUILD_ID' wrangler.toml | grep -oE '[0-9]{17,20}')
+          sleep 10
+          CMDS='[{"name":"resumo","description":"Resumo das suas capturas no PokeIdle Farm","dm_permission":false,"options":[{"type":4,"name":"horas","description":"Quantas horas pra trás (padrão 6, máximo 48)","min_value":1,"max_value":48,"required":false}]}]'
+          curl -fsS -X PUT -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" --data "$CMDS" \
+            "https://discord.com/api/v10/applications/$APP/guilds/$GUILD/commands" | jq -c '[.[] | .name]'
+          for i in 1 2 3; do
+            R=$(curl -sS -o /tmp/r.json -w '%{http_code}' -X PATCH -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
+              --data "{\"interactions_endpoint_url\":\"$URL/interactions\"}" "https://discord.com/api/v10/applications/@me")
+            if [ "$R" = "200" ]; then echo "endpoint ok"; exit 0; fi
+            echo "tentativa $i: $R $(cat /tmp/r.json)"; sleep 15
+          done
+          exit 1
+
       - name: Resumo
         run: |
           URL="${{ steps.deploy.outputs.url }}"
@@ -98,4 +120,10 @@ jobs:
             echo "URL: \`$URL\`"
             echo ""
             echo "Redirect para o Discord (OAuth2 › Redirects): \`$URL/callback\`"
+            echo ""
+            if [ "${{ steps.discord.outcome }}" = "success" ]; then
+              echo "Comando /resumo registrado e Interactions Endpoint URL configurada."
+            else
+              echo "Não consegui configurar o /resumo sozinho. No Developer Portal › General Information, cole em Interactions Endpoint URL: \`$URL/interactions\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
