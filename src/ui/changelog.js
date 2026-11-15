@@ -1,6 +1,13 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.16',
+    date: '15/11/2026',
+    items: [
+      'Corrigido: pokémon acima da nota mínima que não avisavam. A nota às vezes aparece alguns segundos depois da captura no painel, e o app descartava a captura antes de a nota chegar. Agora ele espera a nota.'
+    ]
+  },
+  {
     version: '1.0.15',
     date: '14/11/2026',
     items: [

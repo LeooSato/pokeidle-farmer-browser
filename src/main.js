@@ -668,15 +668,21 @@ async function checkCaptures() {
     try { list = await p.view.webContents.executeJavaScript(kick.gameCaptures(false), true); } catch { return; }
     if (!Array.isArray(list)) return;
     queueCaptures(list);
-    const fresh = list.filter((c) => !capSeen.has(c.k));
+    const capTs = (c) => Number(String(c.k).split(':')[0]);
+    // O selo de nota (.pk-selo-n) é posto pela extensão /rate e pode chegar depois da linha.
+    // Antes a linha era marcada como vista sem nota e nunca mais avaliada; agora só marca
+    // quando a nota apareceu (ou depois de 30 min sem nota).
+    const settled = (c) => c.nota != null || c.shiny || !(capTs(c) > 1e12) || Date.now() - capTs(c) > 30 * 60 * 1000;
+    const fresh = list.filter((c) => !capSeen.has(c.k) && settled(c));
     fresh.forEach((c) => capSeen.add(c.k));
-    if (!capReady) { capReady = true; capSince = Date.now(); return; }
+    if (!capReady) { capReady = true; capSince = Date.now(); list.forEach((c) => capSeen.add(c.k)); return; }
     const min = Number(state.captureMinScore ?? 3);
     // Só captura nova de verdade: o data-k começa com o horário da captura (ms). A lista é ordenada
     // por nota, então capturas antigas podem "aparecer" nela depois; essas não avisam.
+    // Sem limite curto de idade: a linha pode aparecer atrasada no painel e ainda assim avisa.
     const isNew = (c) => {
-      const ts = Number(String(c.k).split(':')[0]);
-      if (ts > 1e12) return ts >= capSince - 15000 && Date.now() - ts < 10 * 60 * 1000;
+      const ts = capTs(c);
+      if (ts > 1e12) return ts >= capSince - 15000 && Date.now() - ts < 6 * 3600 * 1000;
       return !!c.novo;
     };
     const hits = fresh.filter(isNew).filter((c) => c.shiny || (c.nota != null && c.nota >= min));
