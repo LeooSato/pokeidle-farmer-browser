@@ -452,6 +452,7 @@ async function sampleGameStats(p) {
   const items = await readItems(p);
   st.last.balls = items && items.balls;
   st.last.potions = items && items.potions;
+  st.last.revives = items && items.revives;
   send('game-stats', { id: p.id, nick: nickOf(p), ...st.last });
   trackDaily(p, st.xpGained - before.xp, st.goldGained - before.gold, now);
   checkIdle(p, r, st.xpGained - before.xp, now);
@@ -468,6 +469,7 @@ async function readItems(p) {
   if (!r) return null;
   if (Array.isArray(r.balls)) autoBuyBalls(p, r.balls);
   if (Array.isArray(r.balls)) checkItems(p, 'ball', r.balls, { all: 'Pokébolas acabaram', allBody: 'Todas as pokébolas ligadas no automático estão zeradas. Compre mais na loja.', body: 'Compre mais na loja pra continuar capturando.', limit: state.ballsLow ?? 100 });
+  if (Array.isArray(r.revives)) checkItems(p, 'revive', r.revives, { all: 'Revives acabaram', allBody: 'Todos os revives do uso automático estão zerados. Se um pokémon desmaiar, o farm para.', body: 'Compre mais revives pro time não ficar desmaiado.', limit: state.revivesLow ?? 100 });
   if (Array.isArray(r.potions)) checkItems(p, 'potion', r.potions, { all: 'Potions acabaram', allBody: 'Todas as potions do uso automático estão zeradas.', body: 'Compre mais potions pra equipe não desmaiar.', limit: state.potionsLow ?? 100 });
   return r;
 }
@@ -884,7 +886,8 @@ function checkItems(p, kind, list, o) {
     if (x.qty === null) continue;
     const before = prev[x.name];
     const k0 = `${kind}:zero:${x.name}`, kl = `${kind}:low:${x.name}`;
-    const buy = x.on ? { kind, name: x.name } : undefined; // dica do /comprar só pro item ligado no automático
+    // dica do /comprar só pro item ligado no automático (revive ainda não tem /comprar)
+    const buy = x.on && kind !== 'revive' ? { kind, name: x.name } : undefined;
     if (x.qty === 0) { if (before > 0) itemAlert(p, k0, `${x.name} acabou`, o.body, buy); }
     else if (x.qty < o.limit) { delete st.itemAlerts[k0]; if (before === undefined || before > x.qty) itemAlert(p, kl, `${x.name} acabando (${x.qty})`, `Restam ${x.qty}. ${o.body}`, buy); }
     else { delete st.itemAlerts[k0]; delete st.itemAlerts[kl]; }

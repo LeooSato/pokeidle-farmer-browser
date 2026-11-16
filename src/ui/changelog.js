@@ -8,6 +8,7 @@ window.CHANGELOG = [
       'Várias contas do PokeIdle (até 4, o limite do jogo). Cada conta tem login, cookies e extensões separados. Troque pelas abas em cima do jogo ou veja todas numa grade 2×2.',
       'Contas que não estão na tela continuam farmando sem ser desenhadas. Pausar uma conta fecha a página dela e libera a memória.',
       'Avisos do Discord com o nick da conta no título, todos na mesma thread. /resumo separa por conta (e aceita conta:nick) e /comprar aceita conta:nick.',
+      'Revives entram no aviso de item acabando e no painel de itens.',
       'As lives agora ficam na tela Lives da barra lateral. Elas continuam rodando e contando enquanto você está no jogo.'
     ]
   },

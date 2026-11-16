@@ -282,7 +282,7 @@ function renderAccountCards() {
   const fmtAge = (t) => (t ? `farmando há ${fmtDur(Date.now() - t, true)}` : '');
   const cards = ui.accounts.map((a) => {
     const s = ui.statsById[a.id] || {};
-    const low = [...(s.balls || []), ...(s.potions || [])].find((x) => x.on && x.qty !== null && x.qty < 100);
+    const low = [...(s.balls || []), ...(s.potions || []), ...(s.revives || [])].find((x) => x.on && x.qty !== null && x.qty < 100);
     const mem = ui.metrics && ui.metrics.panels[a.id];
     const sub = a.paused ? `${a.level ? `Nv ${a.level} · ` : ''}pausada` : [a.level ? `Nv ${a.level}` : (a.nick ? '' : 'faça login no painel do jogo'), fmtAge(a.since)].filter(Boolean).join(' · ');
     return `<div class="acc-card ${a.id === ui.active && !a.paused ? 'on' : ''}" data-id="${a.id}">
@@ -372,11 +372,11 @@ function renderDash() {
   bars($('#spark-gold'), s.spark ? groupSpark(s.spark).map((x) => (x === null ? null : x)) : []);
   // itens da conta na tela
   $('#items-acc').textContent = many ? accName(a) : '';
-  const list = [...(s.balls || []).filter((x) => x.on || x.qty), ...(s.potions || []).filter((x) => x.on || x.qty)];
+  const list = [...(s.balls || []).filter((x) => x.on || x.qty), ...(s.potions || []).filter((x) => x.on || x.qty), ...(s.revives || []).filter((x) => x.on || x.qty)];
   const items = $('#items');
   if (!list.length) items.innerHTML = `<p class="empty">${s.found ? 'Nenhum item no automático.' : 'Esperando o jogo carregar…'}</p>`;
   else {
-    const shown = list.sort((x, y) => (y.on - x.on) || ((y.qty || 0) - (x.qty || 0))).slice(0, 5);
+    const shown = list.sort((x, y) => (y.on - x.on) || ((y.qty || 0) - (x.qty || 0))).slice(0, 6);
     const max = Math.max(1000, ...shown.map((x) => x.qty || 0));
     items.innerHTML = shown.map((x) => {
       const cls = x.qty === 0 ? 'zero' : x.qty !== null && x.qty < 100 ? 'low' : '';
