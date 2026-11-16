@@ -76,6 +76,38 @@ let loginWins = [];             // janelas de login (PokeIdle e Kick)
 let updatePending = false;      // arquivo do processo principal mudou: precisa reiniciar
 let watchdogPaused = !!(config.watchdog && config.watchdog.enabled === false); // botão na barra de título
 const panels = new Map(); // id -> painel
+
+// ---------------------------------------------------------------------------
+// Contas do PokeIdle: até 4 (limite por pessoa nos termos do jogo), cada uma com sessão própria
+// (login, cookies, localStorage e extensões separados). A principal é sempre "game", na mesma
+// sessão persist:farm de antes, então quem atualiza não perde o login.
+// ---------------------------------------------------------------------------
+const MAX_ACCOUNTS = 4;
+const ACCOUNT_ID_RE = /^game(-[2-4])?$/;
+function accounts() {
+  const list = (Array.isArray(state.accounts) ? state.accounts : []).filter((a) => a && ACCOUNT_ID_RE.test(a.id));
+  if (!list.some((a) => a.id === 'game')) list.unshift({ id: 'game' });
+  return list.slice(0, MAX_ACCOUNTS);
+}
+const accountOf = (id) => accounts().find((a) => a.id === id);
+function setAccount(id, patch) {
+  state.accounts = accounts().map((a) => (a.id === id ? { ...a, ...patch } : a));
+  saveState();
+}
+const partitionOf = (id) => (id === 'game' ? 'persist:farm' : `persist:farm-${id.slice(5)}`);
+const gamePanels = () => [...panels.values()].filter((p) => p.kind === 'game');
+const nickOf = (p) => (p && (p.id === 'game' ? state.user : (accountOf(p.id) || {}).nick)) || null;
+// Título dos avisos com o nick da conta na frente: "[alt_leo] Capturou Lairon Nv 40!"
+const tagged = (p, title) => { const n = nickOf(p); return n ? `[${n}] ${title}` : title; };
+// Estado de cada conta em execução (fica no próprio painel e some quando a conta pausa).
+const newGameCtx = () => ({
+  stats: { prev: null, xpGained: 0, goldGained: 0, samples: [], idsLogged: false, last: null },
+  capSeen: new Set(), capReady: false, capSince: 0, capBusy: false,
+  capQueue: new Map(), capSent: new Set(),
+  notaLogged: false, notaLastRun: 0, notaCache: [],
+  buyBusy: false, autoBuyLast: 0, autoBuyFails: 0,
+  userLoading: true, userPoll: null
+});
 const startInLoginMode = process.argv.includes('--login');
 
 function send(channel, payload) {
@@ -98,7 +130,7 @@ function pushStatus(p) {
 }
 
 function pushGlobal() {
-  send('global-status', { reportAvailable: !!stats.reportAvailable, activeProfile: state.activeProfile || null, smartAudio: !!state.smartAudio, economy: !!state.economy, notifyLive: state.notifyLive !== false, updatePending, userLoading, user: state.user || null, loginOpen: loginWins.length > 0, watchdogPaused, lastReload, totalReloads });
+  send('global-status', { accounts: accountsInfo(), reportAvailable: !!stats.reportAvailable, activeProfile: state.activeProfile || null, smartAudio: !!state.smartAudio, economy: !!state.economy, notifyLive: state.notifyLive !== false, updatePending, userLoading, user: state.user || null, loginOpen: loginWins.length > 0, watchdogPaused, lastReload, totalReloads });
 }
 
 function setStatus(p, status) {
@@ -197,10 +229,10 @@ const HIDE_CHAT_CSS = {
   kick: '#channel-chatroom, #chatroom, [data-testid="chatroom"], [data-testid="chat"] { display: none !important; }',
   twitch: '.channel-root__right-column, .right-column, [data-a-target="right-column-chat-bar"] { display: none !important; }'
 };
-function createPanel({ id, kind, title, url, platform, channel }) {
+function createPanel({ id, kind, title, url, platform, channel, session: pses }) {
   const view = new WebContentsView({
     webPreferences: {
-      session: ses,
+      session: pses || ses,
       backgroundThrottling: false, // continua rodando em segundo plano
       contextIsolation: true,
       sandbox: true,
@@ -213,12 +245,14 @@ function createPanel({ id, kind, title, url, platform, channel }) {
 
   const p = {
     id, kind, title, url, platform, channel, view, status: 'loading', reloads: 0,
-    stalled: 0, lastTime: null, noVideoSince: null, qualityFixed: false, lastLoad: Date.now()
+    stalled: 0, lastTime: null, noVideoSince: null, qualityFixed: false, lastLoad: Date.now(), createdAt: Date.now()
   };
+  if (kind === 'game') p.g = newGameCtx();
   panels.set(id, p);
 
   const wc = view.webContents;
-  const muted = state.muted && id in state.muted ? state.muted[id] : (kind === 'stream' && config.streamsMutedByDefault);
+  // Contas extras começam mudas (4 jogos tocando junto ninguém merece).
+  const muted = state.muted && id in state.muted ? state.muted[id] : ((kind === 'stream' && config.streamsMutedByDefault) || (kind === 'game' && id !== 'game'));
   wc.setAudioMuted(!!muted);
   if (kind === 'game' && config.game.zoom) wc.setZoomFactor(config.game.zoom);
   if (state.zoom && state.zoom[id]) wc.setZoomFactor(state.zoom[id]);
@@ -231,7 +265,7 @@ function createPanel({ id, kind, title, url, platform, channel }) {
     p.lastLoad = Date.now();
     setStatus(p, kind === 'game' ? 'ok' : 'checking');
     if (kind === 'stream') { quickDetect(p); setTimeout(() => applyEconomyQuality(p), 4000); }
-    if (kind === 'game') pollGameUser();
+    if (kind === 'game') pollGameUser(p);
   });
   wc.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
     if (!isMainFrame || code === -3 /* abortado */) return;
@@ -245,7 +279,7 @@ function createPanel({ id, kind, title, url, platform, channel }) {
   });
   wc.on('render-process-gone', (_e, details) => {
     log(`[${id}] processo caiu: ${details.reason}`);
-    if (kind === 'game' && details.reason !== 'killed' && !p.blankTries) notifyFarm('O jogo fechou sozinho', `O processo do jogo caiu (${details.reason}). Recarregando.`, 0xe5484d);
+    if (kind === 'game' && details.reason !== 'killed' && !p.blankTries) notifyFarm('O jogo fechou sozinho', `O processo do jogo caiu (${details.reason}). Recarregando.`, 0xe5484d, p);
     setStatus(p, 'error');
     setTimeout(() => reloadPanel(p, 'processo caiu'), 3000);
   });
@@ -373,49 +407,54 @@ function startMetrics() {
 // ---------------------------------------------------------------------------
 // Stats do PokeIdle: XP/h e ouro/h da sessão
 // ---------------------------------------------------------------------------
-const stats = { prev: null, xpGained: 0, goldGained: 0, samples: [], idsLogged: false, last: null };
-async function sampleGameStats() {
-  const p = panels.get('game');
-  if (!p || p.view.webContents.isLoading() || !kick.gameStats) return;
+const stats = { reportAvailable: false, lastShot: null }; // geral (o resto fica em p.g.stats de cada conta)
+const alive = (p) => !!p && panels.get(p.id) === p && !p.view.webContents.isDestroyed();
+function sampleAllGames() { for (const p of gamePanels()) sampleGameStats(p); }
+async function sampleGameStats(p) {
+  if (!alive(p) || p.view.webContents.isLoading() || !kick.gameStats) return;
+  const st = p.g.stats;
   let r;
   // timeout: com o renderer travado o executeJavaScript nunca volta
   try { r = await Promise.race([p.view.webContents.executeJavaScript(kick.gameStats, true), new Promise((ok) => setTimeout(() => ok('timeout'), 20000))]); } catch { r = null; }
+  if (!alive(p)) return;
   checkBlank(p, r && r !== 'timeout' && (r.xp !== null || r.gold !== null));
   if (!r || r === 'timeout') return;
-  if (!stats.idsLogged && r.ids) { stats.idsLogged = true; log(`[stats] ids encontrados: ${JSON.stringify(r.ids)}`); }
-  const prev = stats.prev;
-  const before = { xp: stats.xpGained, gold: stats.goldGained };
+  if (!st.idsLogged && r.ids) { st.idsLogged = true; log(`[stats] ${p.id} ids encontrados: ${JSON.stringify(r.ids)}`); }
+  const prev = st.prev;
+  const before = { xp: st.xpGained, gold: st.goldGained };
   if (prev && r.xp !== null && prev.xp !== null) {
-    if (r.xp >= prev.xp && (r.level === prev.level || r.level === null)) stats.xpGained += r.xp - prev.xp;
-    else if (prev.xpMax) stats.xpGained += Math.max(0, prev.xpMax - prev.xp) + r.xp; // subiu de nível
+    if (r.xp >= prev.xp && (r.level === prev.level || r.level === null)) st.xpGained += r.xp - prev.xp;
+    else if (prev.xpMax) st.xpGained += Math.max(0, prev.xpMax - prev.xp) + r.xp; // subiu de nível
   }
-  if (prev && r.gold !== null && prev.gold !== null && r.gold > prev.gold) stats.goldGained += r.gold - prev.gold;
-  if (r.xp !== null || r.gold !== null) stats.prev = r;
+  if (prev && r.gold !== null && prev.gold !== null && r.gold > prev.gold) st.goldGained += r.gold - prev.gold;
+  if (r.xp !== null || r.gold !== null) st.prev = r;
   const now = Date.now();
-  stats.samples.push({ t: now, xp: stats.xpGained, gold: stats.goldGained });
-  stats.samples = stats.samples.filter((x) => now - x.t <= 61 * 60000);
-  const first = stats.samples[0];
+  st.samples.push({ t: now, xp: st.xpGained, gold: st.goldGained });
+  st.samples = st.samples.filter((x) => now - x.t <= 61 * 60000);
+  const first = st.samples[0];
   const hours = (now - first.t) / 3600000;
-  const rate = (k) => (hours >= 2 / 60 ? (stats.samples.at(-1)[k] - first[k]) / hours : null);
+  const rate = (k) => (hours >= 2 / 60 ? (st.samples.at(-1)[k] - first[k]) / hours : null);
   // mini gráfico: XP ganho em cada minuto da última hora
   const spark = [];
   for (let i = 59; i >= 0; i--) {
-    const a = stats.samples.filter((x) => x.t <= now - (i + 1) * 60000).at(-1);
-    const b = stats.samples.filter((x) => x.t <= now - i * 60000).at(-1);
+    const a = st.samples.filter((x) => x.t <= now - (i + 1) * 60000).at(-1);
+    const b = st.samples.filter((x) => x.t <= now - i * 60000).at(-1);
     spark.push(a && b ? b.xp - a.xp : null);
   }
-  stats.last = {
+  st.last = {
     found: r.xp !== null || r.gold !== null,
     level: r.level, xp: r.xp, xpMax: r.xpMax, gold: r.gold,
-    xpGained: stats.xpGained, goldGained: stats.goldGained,
+    xpGained: st.xpGained, goldGained: st.goldGained,
     xpRate: rate('xp'), goldRate: rate('gold'), spark
   };
+  if (r.level != null && p.id !== 'game' && (accountOf(p.id) || {}).level !== r.level) setAccount(p.id, { level: r.level });
+  if (r.level != null && p.id === 'game' && state.userLevel !== r.level) { state.userLevel = r.level; saveState(); }
   const items = await readItems(p);
-  stats.last.balls = items && items.balls;
-  stats.last.potions = items && items.potions;
-  send('game-stats', stats.last);
-  trackDaily(stats.xpGained - before.xp, stats.goldGained - before.gold, now);
-  checkIdle(r, stats.xpGained - before.xp, now);
+  st.last.balls = items && items.balls;
+  st.last.potions = items && items.potions;
+  send('game-stats', { id: p.id, nick: nickOf(p), ...st.last });
+  trackDaily(p, st.xpGained - before.xp, st.goldGained - before.gold, now);
+  checkIdle(p, r, st.xpGained - before.xp, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -423,53 +462,60 @@ async function sampleGameStats() {
 // ou todos os ligados no uso automático zeram). O que já estava zerado ao abrir não gera aviso.
 // ---------------------------------------------------------------------------
 async function readItems(p) {
-  if (!kick.gameItems) return null;
+  if (!kick.gameItems || !alive(p)) return null;
   let r;
   try { r = await p.view.webContents.executeJavaScript(kick.gameItems, true); } catch { return null; }
   if (!r) return null;
   if (Array.isArray(r.balls)) autoBuyBalls(p, r.balls);
-  if (Array.isArray(r.balls)) checkItems('ball', r.balls, { all: 'Pokébolas acabaram', allBody: 'Todas as pokébolas ligadas no automático estão zeradas. Compre mais na loja.', body: 'Compre mais na loja pra continuar capturando.', limit: state.ballsLow ?? 100 });
-  if (Array.isArray(r.potions)) checkItems('potion', r.potions, { all: 'Potions acabaram', allBody: 'Todas as potions do uso automático estão zeradas.', body: 'Compre mais potions pra equipe não desmaiar.', limit: state.potionsLow ?? 100 });
+  if (Array.isArray(r.balls)) checkItems(p, 'ball', r.balls, { all: 'Pokébolas acabaram', allBody: 'Todas as pokébolas ligadas no automático estão zeradas. Compre mais na loja.', body: 'Compre mais na loja pra continuar capturando.', limit: state.ballsLow ?? 100 });
+  if (Array.isArray(r.potions)) checkItems(p, 'potion', r.potions, { all: 'Potions acabaram', allBody: 'Todas as potions do uso automático estão zeradas.', body: 'Compre mais potions pra equipe não desmaiar.', limit: state.potionsLow ?? 100 });
   return r;
 }
 // ---------- Compra automática de pokébola (desligada por padrão) ----------
 // Quando a bola escolhida fica abaixo do mínimo, compra pelo próprio Market do jogo, no máximo
 // uma vez a cada 30 min e só com ouro suficiente. Clique normal no botão do jogo: não explora
 // falha, não burla limite e não sobrecarrega o servidor (termos do PokeIdle, seção 6, item 6).
+// Vale pra todas as contas abertas, cada uma com o próprio ouro e o próprio intervalo.
 const BALL_NAMES = ['Poke Ball', 'Great Ball', 'Super Ball', 'Ultra Ball'];
 const autoBuyDefaults = () => ({ on: false, ball: 'Ultra Ball', min: 500, qty: 1000 });
 const autoBuyCfg = () => ({ ...autoBuyDefaults(), ...(state.autoBuy || {}) });
-let autoBuyBusy = false, autoBuyLast = 0, autoBuyFails = 0;
 async function autoBuyBalls(p, balls) {
   const cfg = autoBuyCfg();
-  if (!cfg.on || autoBuyBusy || !kick.gameBuyBall) return;
+  const g = p.g;
+  if (!cfg.on || g.buyBusy || !kick.gameBuyBall) return;
   const ball = balls.find((b) => String(b.name).toLowerCase() === cfg.ball.toLowerCase());
   if (!ball || ball.qty == null || ball.qty >= cfg.min) return;
-  const gap = autoBuyFails ? Math.min(4, autoBuyFails) * 30 * 60000 : 30 * 60000;
-  if (Date.now() - autoBuyLast < gap) return;
-  autoBuyBusy = true; autoBuyLast = Date.now();
+  const gap = g.autoBuyFails ? Math.min(4, g.autoBuyFails) * 30 * 60000 : 30 * 60000;
+  if (Date.now() - g.autoBuyLast < gap) return;
+  g.buyBusy = true; g.autoBuyLast = Date.now();
   try {
     let r;
     try { r = await p.view.webContents.executeJavaScript(kick.gameBuyBall(cfg.ball, cfg.qty), true); } catch (err) { r = { ok: false, error: err.message }; }
     r = r || { ok: false, error: 'sem resposta' };
     const fmt = (v) => (v == null ? '?' : Number(v).toLocaleString('pt-BR'));
     if (r.ok) {
-      autoBuyFails = 0;
+      g.autoBuyFails = 0;
       const body = `Comprei ${fmt(r.bought)} ${cfg.ball} por ${fmt(r.bought * (r.price || 0))} de ouro. Agora você tem ${fmt(r.after)}.`;
-      log(`[compra] ${body}`);
-      send('toast', { title: 'Pokébolas compradas', body, platform: 'ok' });
-      if (state.discordItems !== false) notifyPhone({ title: `Comprei ${fmt(r.bought)} ${cfg.ball}`, description: body, color: 0x53fc18 });
+      log(`[compra] ${p.id}: ${body}`);
+      send('toast', { title: tagged(p, 'Pokébolas compradas'), body, platform: 'ok' });
+      if (state.discordItems !== false) notifyPhone({ title: tagged(p, `Comprei ${fmt(r.bought)} ${cfg.ball}`), description: body, color: 0x53fc18 });
     } else {
-      autoBuyFails++;
+      g.autoBuyFails++;
       const why = r.error === 'sem ouro' ? `ouro insuficiente (${fmt(r.gold)}, a ${cfg.ball} custa ${fmt(r.price)})` : r.error;
-      log(`[compra] falhou: ${why}`);
-      if (autoBuyFails === 1) notifyFarm('Compra automática falhou', `Não consegui comprar ${cfg.ball}: ${why}. Tento de novo mais tarde.`, 0xe5484d);
+      log(`[compra] ${p.id} falhou: ${why}`);
+      if (g.autoBuyFails === 1) notifyFarm('Compra automática falhou', `Não consegui comprar ${cfg.ball}: ${why}. Tento de novo mais tarde.`, 0xe5484d, p);
     }
-  } finally { autoBuyBusy = false; }
+  } finally { g.buyBusy = false; }
 }
-// ---------- Compras pedidas pelo Discord (botões do alerta de itens) ----------
+// ---------- Compras pedidas pelo Discord (/comprar) ----------
 // O servidor não alcança o PC: o app pergunta a cada 45 s se tem pedido na fila (vale 30 min).
+// "conta:" no comando escolhe a conta pelo nick; sem ela, compra na conta principal.
 let cmdBusy = false;
+function commandTarget(c) {
+  const want = String(c.acc || '').trim().toLowerCase();
+  if (!want) return panels.get('game') || null;
+  return gamePanels().find((p) => String(nickOf(p) || '').toLowerCase() === want) || null;
+}
 async function pollCommands() {
   if (cmdBusy || !ALERT_SERVER || !state.alertSession) return;
   cmdBusy = true;
@@ -479,31 +525,38 @@ async function pollCommands() {
     const { commands = [] } = await res.json().catch(() => ({}));
     for (const c of commands.slice(0, 3)) {
       if (c.type !== 'buy' || !['ball', 'potion'].includes(c.kind)) continue;
-      const p = panels.get('game');
-      if (!p || !kick.gameBuyItem) continue;
+      const p = commandTarget(c);
+      if (!p) {
+        const open = gamePanels().map(nickOf).filter(Boolean).join(', ') || 'nenhuma';
+        notifyPhone({ title: 'Não consegui comprar', description: `A conta "${String(c.acc).slice(0, 30)}" não está aberta no app. Contas abertas: ${open}.`, color: 0xe5484d });
+        continue;
+      }
+      if (!kick.gameBuyItem) continue;
       if (c.name === 'auto') { // a bola/potion que está ligada no automático do jogo
         const items = await readItems(p);
         const list = items && (c.kind === 'ball' ? items.balls : items.potions);
         const on = Array.isArray(list) && (list.find((x) => x.on) || null);
-        if (!on) { notifyPhone({ title: 'Não consegui comprar', description: `Nenhuma ${c.kind === 'ball' ? 'pokébola' : 'potion'} ligada no automático do jogo. Use /comprar com o nome da bola.`, color: 0xe5484d }); continue; }
+        if (!on) { notifyPhone({ title: tagged(p, 'Não consegui comprar'), description: `Nenhuma ${c.kind === 'ball' ? 'pokébola' : 'potion'} ligada no automático do jogo. Use /comprar com o nome da bola.`, color: 0xe5484d }); continue; }
         c.name = on.name;
       }
-      while (autoBuyBusy) await new Promise((r) => setTimeout(r, 1000));
-      autoBuyBusy = true;
+      while (p.g.buyBusy) await new Promise((r) => setTimeout(r, 1000));
+      if (!alive(p)) continue;
+      p.g.buyBusy = true;
       let r;
-      try { r = await p.view.webContents.executeJavaScript(kick.gameBuyItem(c.kind, c.name, c.qty), true); } catch (err) { r = { ok: false, error: err.message }; } finally { autoBuyBusy = false; }
+      try { r = await p.view.webContents.executeJavaScript(kick.gameBuyItem(c.kind, c.name, c.qty), true); } catch (err) { r = { ok: false, error: err.message }; } finally { p.g.buyBusy = false; }
       r = r || { ok: false, error: 'sem resposta' };
       const fmt = (v) => (v == null ? '?' : Number(v).toLocaleString('pt-BR'));
       if (r.ok) {
         const body = `Comprei ${fmt(r.bought)} ${c.name} por ${fmt(r.bought * (r.price || 0))} de ouro. Agora você tem ${fmt(r.after)}.`;
-        log(`[compra] pedido do Discord: ${body}`);
-        send('toast', { title: `${c.name}: compra feita`, body, platform: 'ok' });
-        notifyPhone({ title: `Comprei ${fmt(r.bought)} ${c.name}`, description: body + (r.bought < c.qty ? `\n(Pedido era ${fmt(c.qty)}; parei na metade do seu ouro.)` : ''), color: 0x53fc18 });
-        if (stats.itemAlerts) Object.keys(stats.itemAlerts).forEach((k) => k.endsWith(':' + c.name) && delete stats.itemAlerts[k]);
+        log(`[compra] pedido do Discord (${p.id}): ${body}`);
+        send('toast', { title: tagged(p, `${c.name}: compra feita`), body, platform: 'ok' });
+        notifyPhone({ title: tagged(p, `Comprei ${fmt(r.bought)} ${c.name}`), description: body + (r.bought < c.qty ? `\n(Pedido era ${fmt(c.qty)}; parei na metade do seu ouro.)` : ''), color: 0x53fc18 });
+        const ia = p.g.stats.itemAlerts;
+        if (ia) Object.keys(ia).forEach((k) => k.endsWith(':' + c.name) && delete ia[k]);
       } else {
         const why = r.error === 'sem ouro' ? `ouro insuficiente (${fmt(r.gold)}, custa ${fmt(r.price)} cada)` : r.error;
-        log(`[compra] pedido do Discord falhou: ${why}`);
-        notifyPhone({ title: `Não consegui comprar ${c.name}`, description: why, color: 0xe5484d });
+        log(`[compra] pedido do Discord falhou (${p.id}): ${why}`);
+        notifyPhone({ title: tagged(p, `Não consegui comprar ${c.name}`), description: why, color: 0xe5484d });
       }
     }
   } catch (err) {
@@ -652,17 +705,14 @@ function maskWebhook(url) {
   return m ? `webhook …${m[1].slice(-4)}` : null;
 }
 // ---------- Capturas boas ----------
-// Lê o painel "Capturas" do jogo a cada 10s. Na primeira leitura só memoriza o que já estava lá,
+// Lê o painel "Capturas" de cada conta a cada 10s. Na primeira leitura só memoriza o que já estava lá,
 // depois avisa (PC + Discord) quando aparece captura nova com nota >= mínimo ou shiny.
-const capSeen = new Set();
-let capReady = false;
-let capSince = 0;
-let capBusy = false;
 const fmtN = (n, d = 2) => (n == null ? '?' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d }));
-async function checkCaptures() {
-  const p = panels.get('game');
-  if (capBusy || !p || p.view.webContents.isLoading() || !kick.gameCaptures) return;
-  capBusy = true;
+async function checkAllCaptures() { for (const p of gamePanels()) await checkCaptures(p); }
+async function checkCaptures(p) {
+  const g = p && p.g;
+  if (!g || g.capBusy || !alive(p) || p.view.webContents.isLoading() || !kick.gameCaptures) return;
+  g.capBusy = true;
   try {
     let list;
     try { list = await p.view.webContents.executeJavaScript(kick.gameCaptures(false), true); } catch { list = null; }
@@ -671,22 +721,20 @@ async function checkCaptures() {
     if (!Array.isArray(list)) list = hist;
     else { const have = new Set(list.map((c) => c.k)); list = list.concat(hist.filter((c) => !have.has(c.k))); }
     if (!list.length) return;
-    queueCaptures(list);
+    queueCaptures(p, list);
     const capTs = (c) => Number(String(c.k).split(':')[0]);
     // O selo de nota (.pk-selo-n) é posto pela extensão /rate e pode chegar depois da linha.
-    // Antes a linha era marcada como vista sem nota e nunca mais avaliada; agora só marca
-    // quando a nota apareceu (ou depois de 30 min sem nota).
+    // Só marca a linha como vista quando a nota apareceu (ou depois de 30 min sem nota).
     const settled = (c) => c.nota != null || c.shiny || !(capTs(c) > 1e12) || Date.now() - capTs(c) > 30 * 60 * 1000;
-    const fresh = list.filter((c) => !capSeen.has(c.k) && settled(c));
-    fresh.forEach((c) => capSeen.add(c.k));
-    if (!capReady) { capReady = true; capSince = Date.now(); list.forEach((c) => capSeen.add(c.k)); return; }
+    const fresh = list.filter((c) => !g.capSeen.has(c.k) && settled(c));
+    fresh.forEach((c) => g.capSeen.add(c.k));
+    if (!g.capReady) { g.capReady = true; g.capSince = Date.now(); list.forEach((c) => g.capSeen.add(c.k)); return; }
     const min = Number(state.captureMinScore ?? 3);
     // Só captura nova de verdade: o data-k começa com o horário da captura (ms). A lista é ordenada
     // por nota, então capturas antigas podem "aparecer" nela depois; essas não avisam.
-    // Sem limite curto de idade: a linha pode aparecer atrasada no painel e ainda assim avisa.
     const isNew = (c) => {
       const ts = capTs(c);
-      if (ts > 1e12) return ts >= capSince - 15000 && Date.now() - ts < 6 * 3600 * 1000;
+      if (ts > 1e12) return ts >= g.capSince - 15000 && Date.now() - ts < 6 * 3600 * 1000;
       return !!c.novo;
     };
     const hits = fresh.filter(isNew).filter((c) => c.shiny || (c.nota != null && c.nota >= min));
@@ -695,21 +743,22 @@ async function checkCaptures() {
     if (state.discordWebhook) {
       try { withImg = await p.view.webContents.executeJavaScript(kick.gameCaptures(true), true) || []; } catch { withImg = []; }
     }
-    for (const c of hits.slice(0, 5)) await captureAlert(c, (withImg.find((x) => x.k === c.k) || {}).img);
-  } finally { capBusy = false; }
+    for (const c of hits.slice(0, 5)) await captureAlert(p, c, (withImg.find((x) => x.k === c.k) || {}).img);
+  } finally { g.capBusy = false; }
 }
 // ---------- Capturas pro /resumo do Discord ----------
 // Toda captura (sem imagem) vai pro servidor de alertas, que guarda 48 h pra montar o /resumo.
 // Só com o Discord conectado no modo servidor. A cada 5 min manda o que tiver (vale como "app ligado").
-const capQueue = new Map();
-const capSent = new Set();
-function queueCaptures(list) {
+// Cada captura leva o nick da conta, pro /resumo separar por conta.
+function queueCaptures(p, list) {
+  const g = p.g;
+  const acc = nickOf(p) || undefined;
   for (const c of list || []) {
-    if (!c || !c.k || capSent.has(c.k)) continue;
+    if (!c || !c.k || g.capSent.has(c.k)) continue;
     const t = Number(c.t) || Number(String(c.k).split(':')[0]);
     if (!(t > 1e12) || Date.now() - t > 48 * 3600 * 1000) continue;
-    const prev = capQueue.get(c.k) || {};
-    capQueue.set(c.k, { k: c.k, t, name: c.name || prev.name, level: c.level ?? prev.level, nota: c.nota ?? prev.nota, iv: c.iv ?? prev.iv, q: c.q ?? prev.q, pot: c.pot ?? prev.pot, shiny: !!(c.shiny || prev.shiny) });
+    const prev = g.capQueue.get(c.k) || {};
+    g.capQueue.set(c.k, { k: c.k, t, acc, name: c.name || prev.name, level: c.level ?? prev.level, nota: c.nota ?? prev.nota, iv: c.iv ?? prev.iv, q: c.q ?? prev.q, pot: c.pot ?? prev.pot, shiny: !!(c.shiny || prev.shiny) });
   }
 }
 let capSyncBusy = false;
@@ -717,25 +766,26 @@ async function syncCaptures() {
   if (capSyncBusy || !ALERT_SERVER || !state.alertSession) return;
   capSyncBusy = true;
   try {
-    const p = panels.get('game');
-    if (p && !p.view.webContents.isLoading() && kick.gameCaptureHist) {
+    const games = gamePanels();
+    for (const p of games) {
+      if (!alive(p) || p.view.webContents.isLoading() || !kick.gameCaptureHist) continue;
       try {
         const hist = await p.view.webContents.executeJavaScript(kick.gameCaptureHist(), true);
         // linha do histórico sem nota: espera o painel completar se ela ainda estiver lá
-        queueCaptures((hist || []).filter((h) => !capQueue.has(h.k)));
+        queueCaptures(p, (hist || []).filter((h) => !p.g.capQueue.has(h.k)));
       } catch {}
     }
-    const caps = [...capQueue.values()].slice(0, 100);
+    const batch = games.flatMap((p) => [...p.g.capQueue.values()].slice(0, 100).map((c) => ({ p, c }))).slice(0, 100);
     const res = await net.fetch(`${ALERT_SERVER}/captures`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${state.alertSession}` },
-      body: JSON.stringify({ ver: app.getVersion(), caps })
+      body: JSON.stringify({ ver: app.getVersion(), caps: batch.map((x) => x.c) })
     });
     if (res.ok) {
-      for (const c of caps) {
+      for (const { p, c } of batch) {
         // sem nota ainda: deixa na fila mais um pouco pra mandar de novo com a nota do painel
         if (c.nota == null && Date.now() - c.t < 30 * 60 * 1000) continue;
-        capQueue.delete(c.k); capSent.add(c.k);
+        p.g.capQueue.delete(c.k); p.g.capSent.add(c.k);
       }
     } else if (res.status === 401 || res.status === 410) {
       log(`[resumo] servidor recusou o crachá (${res.status})`);
@@ -746,22 +796,25 @@ async function syncCaptures() {
 }
 // Calibra qual função do /shared/nota-pokemon.mjs dá a mesma nota do painel. Só depois de bater
 // em 3 capturas (e nenhuma diferente) passa a usar a nota calculada quando o painel não está na tela.
-let notaLogged = false, notaLastRun = 0, notaCache = [];
+// A função escolhida vale pra todas as contas (é o mesmo jogo).
 async function histWithNota(p, panel) {
+  const g = p.g;
   if (!kick.gameHistNota) return [];
   const now = Date.now();
   const calibrated = !!state.notaFn;
-  if (now - notaLastRun < (calibrated ? 10000 : 120000)) return calibrated ? notaCache : [];
-  notaLastRun = now;
+  if (now - g.notaLastRun < (calibrated ? 10000 : 120000)) return calibrated ? g.notaCache : [];
+  g.notaLastRun = now;
+  const first = !g.notaLogged && p.id === 'game';
   let r;
-  try { r = await p.view.webContents.executeJavaScript(kick.gameHistNota(state.notaFn || '', !notaLogged), true); } catch (err) { r = { error: err.message }; }
-  if (!r || r.error) { if (!notaLogged) { notaLogged = true; log(`[nota] módulo do jogo indisponível: ${r && r.error}`); } return []; }
-  if (!notaLogged) {
-    notaLogged = true;
-    log(`[nota] exports de nota-pokemon.mjs: ${JSON.stringify((r.exports || []).map((e) => ({ k: e.k, t: e.t })))}`);
-    for (const e of (r.exports || []).filter((e) => e.t === 'function').slice(0, 8)) log(`[nota] ${e.k}: ${String(e.src).replace(/\s+/g, ' ').slice(0, 900)}`);
-    const sample = (r.rows || []).slice(0, 3).map((x) => ({ k: x.k, by: x.by }));
-    log(`[nota] amostra: ${JSON.stringify(sample)}`);
+  try { r = await p.view.webContents.executeJavaScript(kick.gameHistNota(state.notaFn || '', first), true); } catch (err) { r = { error: err.message }; }
+  if (!r || r.error) { if (!g.notaLogged) { g.notaLogged = true; log(`[nota] ${p.id}: módulo do jogo indisponível: ${r && r.error}`); } return []; }
+  if (!g.notaLogged) {
+    g.notaLogged = true;
+    if (first) {
+      log(`[nota] exports de nota-pokemon.mjs: ${JSON.stringify((r.exports || []).map((e) => ({ k: e.k, t: e.t })))}`);
+      const sample = (r.rows || []).slice(0, 3).map((x) => ({ k: x.k, by: x.by }));
+      log(`[nota] amostra: ${JSON.stringify(sample)}`);
+    }
   }
   const rows = r.rows || [];
   const panelNota = new Map(panel.filter((c) => c.nota != null).map((c) => [c.k, c.nota]));
@@ -773,19 +826,25 @@ async function histWithNota(p, panel) {
     if (state.notaFn === fn && bad >= 2 && bad > ok) { log(`[nota] ${fn}() parou de bater com o painel (${bad} diferentes), desligando`); state.notaFn = undefined; saveState(); }
   }
   if (!state.notaFn) return [];
-  notaCache = rows.filter((x) => x.by[state.notaFn] != null).map((x) => ({
+  g.notaCache = rows.filter((x) => x.by[state.notaFn] != null).map((x) => ({
     k: x.k, t: x.t, name: x.name, level: x.level, nota: x.by[state.notaFn], iv: x.iv, ivMax: 192, q: x.q,
     pot: x.pot != null ? `P${x.pot}` : '', shiny: x.shiny, time: new Date(x.t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), src: 'hist'
   }));
-  return notaCache;
+  return g.notaCache;
 }
-async function captureAlert(c, img) {
+// Últimas capturas boas (todas as contas) pro card "Melhores de hoje".
+const recentHits = [];
+async function captureAlert(p, c, img) {
   const head = `${c.shiny ? '✨ Shiny ' : ''}${c.name}${c.level ? ` Nv ${c.level}` : ''}`;
   const line = `Nota ${fmtN(c.nota, 3)}/10 · IV ${c.iv ?? '?'}${c.ivMax ? '/' + c.ivMax : ''} · Q ${fmtN(c.q, 3)} · ${c.pot || 'P?'}`;
-  log(`[captura] ${head} — ${line}`);
-  send('toast', { title: `Pokémon bom: ${head}`, body: line, platform: 'ok' });
+  const nick = nickOf(p);
+  log(`[captura] ${nick ? `[${nick}] ` : ''}${head} — ${line}`);
+  const hit = { k: c.k, t: Number(String(c.k).split(':')[0]) || Date.now(), acc: nick, id: p.id, name: c.name, level: c.level, nota: c.nota, iv: c.iv, ivMax: c.ivMax, q: c.q, pot: c.pot, shiny: !!c.shiny };
+  recentHits.unshift(hit); recentHits.splice(30);
+  send('capture', hit);
+  send('toast', { title: tagged(p, `Pokémon bom: ${head}`), body: line, platform: 'ok' });
   if (Notification.isSupported()) {
-    const n = new Notification({ title: `PokeIdle: ${head}`, body: line, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
+    const n = new Notification({ title: tagged(p, `PokeIdle: ${head}`), body: line, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
     n.on('click', () => { win.show(); win.focus(); });
     n.show();
   }
@@ -797,41 +856,45 @@ async function captureAlert(c, img) {
     { name: 'Nível', value: String(c.level ?? '?') }
   ];
   if (c.shiny) fields.push({ name: 'Shiny', value: '✨ Sim' });
-  await notifyPhone({ title: `Capturou ${head}!`, description: c.time ? `Capturado às ${c.time}` : '', color: c.shiny ? 0xffd166 : 0x53fc18, fields, image: img, mention: true });
+  if (nick) fields.push({ name: 'Conta', value: nick });
+  await notifyPhone({ title: tagged(p, `Capturou ${head}!`), description: c.time ? `Capturado às ${c.time}` : '', color: c.shiny ? 0xffd166 : 0x53fc18, fields, image: img, mention: true });
 }
-function itemAlert(key, title, body, buy) {
-  stats.itemAlerts = stats.itemAlerts || {};
-  if (stats.itemAlerts[key]) return;
-  stats.itemAlerts[key] = true;
-  log(`[itens] ${title}`);
-  send('toast', { title, body, platform: 'warn' });
+function itemAlert(p, key, title, body, buy) {
+  const st = p.g.stats;
+  st.itemAlerts = st.itemAlerts || {};
+  if (st.itemAlerts[key]) return;
+  st.itemAlerts[key] = true;
+  log(`[itens] ${p.id}: ${title}`);
+  send('toast', { title: tagged(p, title), body, platform: 'warn' });
   if (Notification.isSupported()) {
-    const n = new Notification({ title: `PokeIdle: ${title}`, body, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
+    const n = new Notification({ title: tagged(p, `PokeIdle: ${title}`), body, icon: path.join(__dirname, '..', 'assets', 'icon.png') });
     n.on('click', () => { win.show(); win.focus(); });
     n.show();
   }
-  const hint = buy && ALERT_SERVER && state.alertSession ? `\nPra comprar daqui: \`/comprar item:${buy.kind === 'ball' ? 'Pokébola' : 'Potion'} quantidade:1000\`` : '';
-  if (state.discordItems !== false) notifyPhone({ title, description: body + hint, color: 0xe5484d, mention: !!buy });
+  const conta = p.id !== 'game' && nickOf(p) ? ` conta:${nickOf(p)}` : '';
+  const hint = buy && ALERT_SERVER && state.alertSession ? `\nPra comprar daqui: \`/comprar item:${buy.kind === 'ball' ? 'Pokébola' : 'Potion'} quantidade:1000${conta}\`` : '';
+  if (state.discordItems !== false) notifyPhone({ title: tagged(p, title), description: body + hint, color: 0xe5484d, mention: !!buy });
 }
-function checkItems(kind, list, o) {
-  stats.itemAlerts = stats.itemAlerts || {};
-  stats.itemPrev = stats.itemPrev || {};
-  const prev = stats.itemPrev[kind] || {};
+function checkItems(p, kind, list, o) {
+  const st = p.g.stats;
+  st.itemAlerts = st.itemAlerts || {};
+  st.itemPrev = st.itemPrev || {};
+  const prev = st.itemPrev[kind] || {};
   for (const x of list) {
     if (x.qty === null) continue;
     const before = prev[x.name];
     const k0 = `${kind}:zero:${x.name}`, kl = `${kind}:low:${x.name}`;
-    const buy = x.on ? { kind, name: x.name } : undefined; // botão de comprar só pro item ligado no automático
-    if (x.qty === 0) { if (before > 0) itemAlert(k0, `${x.name} acabou`, o.body, buy); }
-    else if (x.qty < o.limit) { delete stats.itemAlerts[k0]; if (before === undefined || before > x.qty) itemAlert(kl, `${x.name} acabando (${x.qty})`, `Restam ${x.qty}. ${o.body}`, buy); }
-    else { delete stats.itemAlerts[k0]; delete stats.itemAlerts[kl]; }
+    const buy = x.on ? { kind, name: x.name } : undefined; // dica do /comprar só pro item ligado no automático
+    if (x.qty === 0) { if (before > 0) itemAlert(p, k0, `${x.name} acabou`, o.body, buy); }
+    else if (x.qty < o.limit) { delete st.itemAlerts[k0]; if (before === undefined || before > x.qty) itemAlert(p, kl, `${x.name} acabando (${x.qty})`, `Restam ${x.qty}. ${o.body}`, buy); }
+    else { delete st.itemAlerts[k0]; delete st.itemAlerts[kl]; }
   }
   const enabled = list.filter((x) => x.on);
   const hadAny = enabled.some((x) => prev[x.name] > 0);
   const allZero = enabled.length && enabled.every((x) => x.qty === 0);
-  if (allZero && hadAny) itemAlert(`${kind}:all`, o.all, o.allBody);
-  else if (!allZero) delete stats.itemAlerts[`${kind}:all`];
-  stats.itemPrev[kind] = Object.fromEntries(list.map((x) => [x.name, x.qty]));
+  if (allZero && hadAny) itemAlert(p, `${kind}:all`, o.all, o.allBody);
+  else if (!allZero) delete st.itemAlerts[`${kind}:all`];
+  st.itemPrev[kind] = Object.fromEntries(list.map((x) => [x.name, x.qty]));
 }
 
 // ---------------------------------------------------------------------------
@@ -844,7 +907,7 @@ function checkItems(kind, list, o) {
 function checkBlank(p, ok) {
   const now = Date.now();
   if (ok) {
-    if (p.blankTries) { log(`[game] jogo voltou depois de ${p.blankTries} tentativa(s)`); notifyFarm('O jogo voltou', 'A tela do jogo voltou ao normal e o farm continuou.', 0x53fc18); }
+    if (p.blankTries) { log(`[game] ${p.id}: jogo voltou depois de ${p.blankTries} tentativa(s)`); notifyFarm('O jogo voltou', 'A tela do jogo voltou ao normal e o farm continuou.', 0x53fc18, p); }
     p.blankSince = null; p.blankTries = 0; p.gameSeen = true;
     return;
   }
@@ -855,36 +918,38 @@ function checkBlank(p, ok) {
   if (now - p.blankSince < wait) return;
   p.blankTries = (p.blankTries || 0) + 1;
   p.blankSince = now;
-  if (p.blankTries === 1) notifyFarm('Tela do jogo travou', 'O jogo ficou cinza/sem resposta. Recarregando sozinho, te aviso quando voltar.', 0xe5484d);
+  if (p.blankTries === 1) notifyFarm('Tela do jogo travou', 'O jogo ficou cinza/sem resposta. Recarregando sozinho, te aviso quando voltar.', 0xe5484d, p);
   if (p.blankTries >= 3) {
-    log(`[game] tela vazia de novo (tentativa ${p.blankTries}): reiniciando o processo da página`);
+    log(`[game] ${p.id}: tela vazia de novo (tentativa ${p.blankTries}): reiniciando o processo da página`);
     try { p.view.webContents.forcefullyCrashRenderer(); return; } catch { /* cai no reload normal */ }
   }
   reloadPanel(p, `tela do jogo vazia (tentativa ${p.blankTries})`);
 }
 // Aviso de problema no farm: PC + Discord (usa a mesma opção dos avisos de itens).
-function notifyFarm(title, body, color) {
+function notifyFarm(title, body, color, p) {
+  if (p) title = tagged(p, title);
   log(`[farm] ${title}: ${body}`);
   send('toast', { title, body, platform: color === 0x53fc18 ? 'ok' : 'warn' });
   if (state.discordItems !== false) notifyPhone({ title, description: body, color });
 }
-function checkIdle(r, dxp, now) {
+function checkIdle(p, r, dxp, now) {
   if (r.xp === null) return;
+  const st = p.g.stats;
   const limit = (state.idleMinutes || 10) * 60000;
-  if (!stats.lastXpUp || dxp > 0) {
-    if (stats.idleAlerted && dxp > 0) send('toast', { title: 'XP voltou a subir', body: 'O farm voltou ao normal', platform: 'ok' });
-    stats.lastXpUp = now; stats.idleAlerted = false;
+  if (!st.lastXpUp || dxp > 0) {
+    if (st.idleAlerted && dxp > 0) send('toast', { title: tagged(p, 'XP voltou a subir'), body: 'O farm voltou ao normal', platform: 'ok' });
+    st.lastXpUp = now; st.idleAlerted = false;
     return;
   }
-  if (stats.idleAlerted || now - stats.lastXpUp < limit) return;
-  stats.idleAlerted = true;
-  const min = Math.round((now - stats.lastXpUp) / 60000);
-  log(`[stats] XP parado há ${min} min`);
-  if (state.discordItems !== false) notifyPhone({ title: `XP parado há ${min} min`, description: 'O Pokémon pode ter desmaiado, a poção acabado ou o jogo travado.', color: 0xe5484d });
-  send('toast', { title: `XP parado há ${min} min`, body: 'Pokémon desmaiou, acabou poção ou o jogo travou?', platform: 'warn' });
+  if (st.idleAlerted || now - st.lastXpUp < limit) return;
+  st.idleAlerted = true;
+  const min = Math.round((now - st.lastXpUp) / 60000);
+  log(`[stats] ${p.id}: XP parado há ${min} min`);
+  if (state.discordItems !== false) notifyPhone({ title: tagged(p, `XP parado há ${min} min`), description: 'O Pokémon pode ter desmaiado, a poção acabado ou o jogo travado.', color: 0xe5484d });
+  send('toast', { title: tagged(p, `XP parado há ${min} min`), body: 'Pokémon desmaiou, acabou poção ou o jogo travou?', platform: 'warn' });
   if (Notification.isSupported()) {
     const n = new Notification({
-      title: `PokeIdle: XP parado há ${min} min`,
+      title: tagged(p, `PokeIdle: XP parado há ${min} min`),
       body: 'Dá uma olhada: o Pokémon pode ter desmaiado, a poção acabado ou o jogo travado.',
       icon: path.join(__dirname, '..', 'assets', 'icon.png')
     });
@@ -895,17 +960,27 @@ function checkIdle(r, dxp, now) {
 
 // ---------------------------------------------------------------------------
 // Relatório diário: XP, ouro, tempo farmando e tempo ao vivo de cada live, por dia.
+// XP e ouro somam todas as contas (e ficam separados em d.acc); tempo e lives contam pela principal.
 // ---------------------------------------------------------------------------
 const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString('sv-SE'); // AAAA-MM-DD no fuso local
-function trackDaily(dxp, dgold, now) {
-  const dt = stats.lastDailyAt ? Math.min(now - stats.lastDailyAt, 90000) : 0;
-  stats.lastDailyAt = now;
+function trackDaily(p, dxp, dgold, now) {
+  const st = p.g.stats;
+  const dt = st.lastDailyAt ? Math.min(now - st.lastDailyAt, 90000) : 0;
+  st.lastDailyAt = now;
   state.daily = state.daily || {};
   const d = state.daily[dayKey(now)] = state.daily[dayKey(now)] || { xp: 0, gold: 0, farmMs: 0, live: {} };
-  d.xp += Math.max(0, dxp); d.gold += Math.max(0, dgold); d.farmMs += dt;
-  if (stats.last && stats.last.level) d.level = stats.last.level;
-  for (const p of panels.values()) {
-    if (p.kind === 'stream' && p.status === 'live') d.live[p.title] = (d.live[p.title] || 0) + dt;
+  d.xp += Math.max(0, dxp); d.gold += Math.max(0, dgold);
+  const nick = nickOf(p) || p.id;
+  d.acc = d.acc || {};
+  const a = d.acc[nick] = d.acc[nick] || { xp: 0, gold: 0, farmMs: 0 };
+  a.xp += Math.max(0, dxp); a.gold += Math.max(0, dgold); a.farmMs += dt;
+  if (st.last && st.last.level) a.level = st.last.level;
+  if (p.id === 'game') {
+    d.farmMs += dt;
+    if (st.last && st.last.level) d.level = st.last.level;
+    for (const s of panels.values()) {
+      if (s.kind === 'stream' && s.status === 'live') d.live[s.title] = (d.live[s.title] || 0) + dt;
+    }
   }
   const keys = Object.keys(state.daily).sort();
   while (keys.length > 30) delete state.daily[keys.shift()];
@@ -923,14 +998,16 @@ function getReport() {
 // Print do jogo (Ctrl+S): salva só o painel do PokeIdle em Imagens\PokeIdle Farm.
 // ---------------------------------------------------------------------------
 async function screenshotGame() {
-  const p = panels.get('game');
+  // a conta que está na tela (na grade, a primeira visível)
+  const p = gamePanels().find((x) => x.shown) || panels.get('game');
   if (!p) return;
   try {
     const img = await p.view.webContents.capturePage();
     const dir = path.join(app.getPath('pictures'), 'PokeIdle Farm');
     fs.mkdirSync(dir, { recursive: true });
     const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, (c) => (c === ' ' ? '_' : '-'));
-    const file = path.join(dir, `pokeidle_${stamp}.png`);
+    const nick = String(nickOf(p) || '').replace(/[^\w-]/g, '');
+    const file = path.join(dir, `pokeidle_${nick ? nick + '_' : ''}${stamp}.png`);
     fs.writeFileSync(file, img.toPNG());
     stats.lastShot = file;
     log(`[print] ${file}`);
@@ -960,6 +1037,7 @@ function applyProfile(name) {
 
 function destroyPanel(p) {
   clearTimeout(p.retryTimer);
+  if (p.g) clearInterval(p.g.userPoll);
   clearInterval(p.quickTimer);
   panels.delete(p.id);
   try { win.contentView.removeChildView(p.view); } catch { /* já removida */ }
@@ -1133,34 +1211,138 @@ function startLiveReload() {
 // Lê o nick logado no PokeIdle e mostra na barra de título no lugar do botão Login.
 // O jogo demora pra montar a tela, então fica tentando a cada 2s até o #tr-nick aparecer,
 // sem limite de tempo. O botão mostra "carregando" enquanto isso.
-let userLoading = true;
-let userPoll = null;
-async function readGameUser() {
-  const p = panels.get('game');
-  if (!p || p.view.webContents.isLoading()) return null;
+let userLoading = true; // da conta principal (botão de login da barra de título)
+async function readGameUser(p) {
+  if (!alive(p) || p.view.webContents.isLoading()) return null;
   try {
     const user = await p.view.webContents.executeJavaScript(kick.gameUser, true);
-    if (user && user !== state.user) {
-      state.user = user; saveState();
-      log(`[game] logado como ${user}`);
+    if (user && user !== nickOf(p)) {
+      const other = gamePanels().find((x) => x !== p && nickOf(x) === user);
+      if (other) send('toast', { title: `${user} já está aberta em outra aba`, body: 'Duas abas na mesma conta brigam pelo farm. Saia dessa e entre com outra conta.', platform: 'warn' });
+      if (p.id === 'game') state.user = user; else setAccount(p.id, { nick: user });
+      saveState();
+      log(`[game] ${p.id} logado como ${user}`);
+      pushGlobal();
     }
     return user || null;
   } catch { return null; } // página ainda carregando
 }
-function pollGameUser() {
-  clearInterval(userPoll);
-  userLoading = true; pushGlobal();
-  userPoll = setInterval(async () => {
-    const user = await readGameUser();
+function pollGameUser(p) {
+  if (!p || !p.g) return;
+  clearInterval(p.g.userPoll);
+  p.g.userLoading = true;
+  if (p.id === 'game') { userLoading = true; pushGlobal(); }
+  p.g.userPoll = setInterval(async () => {
+    if (!alive(p)) { clearInterval(p.g.userPoll); return; }
+    const user = await readGameUser(p);
     if (user) {
-      clearInterval(userPoll);
-      userLoading = false; pushGlobal();
+      clearInterval(p.g.userPoll);
+      p.g.userLoading = false;
+      if (p.id === 'game') userLoading = false;
+      pushGlobal();
     }
   }, 2000);
 }
 
+// ---------------------------------------------------------------------------
+// Gerenciar contas: adicionar (sessão nova), pausar (fecha o processo, 0 de RAM), remover.
+// ---------------------------------------------------------------------------
+let chromeUA = '';
+const extSessions = new Set();
+async function accountSession(id) {
+  if (id === 'game') return ses;
+  const s = session.fromPartition(partitionOf(id));
+  if (!extSessions.has(id)) {
+    extSessions.add(id);
+    hardenSession(s);
+    if (chromeUA) s.setUserAgent(chromeUA);
+    // usa a cópia que a conta principal já baixou (não baixa de novo)
+    await loadExtensions(s, config.extensions, log, { download: false });
+  }
+  return s;
+}
+async function openAccount(a) {
+  if (!a || panels.has(a.id)) return panels.get(a.id);
+  const s = await accountSession(a.id);
+  const p = createPanel({ id: a.id, kind: 'game', title: config.game.title, url: config.game.url, session: s });
+  p.shown = false; p.view.setVisible(false);
+  p.view.webContents.loadURL(p.url).catch(() => {});
+  log(`[contas] ${a.id}${a.nick ? ` (${a.nick})` : ''} aberta`);
+  return p;
+}
+function accountsInfo() {
+  return accounts().map((a) => {
+    const p = panels.get(a.id);
+    const last = p && p.g.stats.last;
+    return {
+      id: a.id, main: a.id === 'game', paused: !!a.paused,
+      nick: a.id === 'game' ? state.user || null : a.nick || null,
+      level: (last && last.level) ?? (a.id === 'game' ? state.userLevel : a.level) ?? null,
+      status: p ? p.status : 'paused', since: p ? p.createdAt : null,
+      loading: p ? !!p.g.userLoading : false
+    };
+  });
+}
+async function addAccount() {
+  const list = accounts();
+  if (list.length >= MAX_ACCOUNTS) return { ok: false, error: `O PokeIdle permite no máximo ${MAX_ACCOUNTS} contas por pessoa.` };
+  const n = [2, 3, 4].find((i) => !list.some((a) => a.id === `game-${i}`));
+  const a = { id: `game-${n}`, added: Date.now() };
+  state.accounts = [...list, a]; saveState();
+  log(`[contas] nova conta ${a.id}`);
+  await openAccount(a);
+  send('accounts-changed', accountsInfo());
+  pushGlobal();
+  return { ok: true, id: a.id };
+}
+async function pauseAccount(id, on) {
+  if (id === 'game' || !accountOf(id)) return accountsInfo();
+  setAccount(id, { paused: !!on });
+  const p = panels.get(id);
+  if (on && p) { destroyPanel(p); log(`[contas] ${id} pausada`); }
+  if (!on && !p) await openAccount(accountOf(id));
+  send('accounts-changed', accountsInfo());
+  pushGlobal();
+  return accountsInfo();
+}
+async function removeAccount(id) {
+  if (id === 'game' || !accountOf(id)) return accountsInfo();
+  const p = panels.get(id);
+  if (p) destroyPanel(p);
+  state.accounts = accounts().filter((a) => a.id !== id); saveState();
+  // apaga login/cookies dessa conta do PC
+  await session.fromPartition(partitionOf(id)).clearStorageData().catch(() => {});
+  log(`[contas] ${id} removida (login apagado)`);
+  send('accounts-changed', accountsInfo());
+  pushGlobal();
+  return accountsInfo();
+}
+// Login de uma conta extra numa janela normal (o painel recarrega quando ela fecha).
+async function openAccountLogin(id) {
+  const p = panels.get(id);
+  if (!p || id === 'game') return openLoginWindow();
+  const w = new BrowserWindow({
+    width: 900, height: 820, title: `Login · PokeIdle (${nickOf(p) || 'nova conta'})`,
+    icon: path.join(__dirname, '..', 'assets', 'icon.png'), autoHideMenuBar: true,
+    webPreferences: { session: await accountSession(id), contextIsolation: true, sandbox: true }
+  });
+  w.on('page-title-updated', (e) => e.preventDefault());
+  w.webContents.setWindowOpenHandler(({ url }) => (isWebUrl(url) ? { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 520, height: 720 } } : { action: 'deny' }));
+  w.loadURL(config.game.url).catch(() => {});
+  w.on('closed', () => { const q = panels.get(id); if (q) { q.failed = true; reloadPanel(q, 'após login', { auto: false }); } });
+}
+// Contas extras escondidas recarregam a cada 6 h, uma de cada vez (20 min de diferença entre elas),
+// pra não acumular memória. Só quando não estão na tela.
+function rotateHiddenAccounts() {
+  const now = Date.now();
+  gamePanels().filter((p) => p.id !== 'game').forEach((p, i) => {
+    if (p.shown || p.view.webContents.isLoading()) return;
+    if (now - (p.lastLoad || now) > 6 * 3600000 + i * 20 * 60000) reloadPanel(p, 'reload preventivo (conta escondida, 6 h)', { auto: false });
+  });
+}
+
 function startWatchdog() {
-  setInterval(async () => { if (!userLoading && await readGameUser()) pushGlobal(); }, 60000);
+  setInterval(() => { for (const p of gamePanels()) if (!p.g.userLoading) readGameUser(p); }, 60000);
   const ms = ((config.watchdog && config.watchdog.intervalSeconds) || 60) * 1000;
   setInterval(() => {
     for (const p of panels.values()) if (p.kind === 'stream') checkStream(p);
@@ -1367,7 +1549,9 @@ function buildTrayMenu() {
 let modalOpen = false;
 function applyViewVisibility() {
   const hidden = !win || win.isDestroyed() || win.isMinimized() || !win.isVisible();
-  panels.forEach((p) => p.view.setVisible(!modalOpen && !(hidden && p.kind === 'stream')));
+  // shown: a interface mandou posição pra ele (aba/visão atual). Conta escondida continua rodando
+  // (backgroundThrottling desligado), só não é desenhada: o mesmo que acontece com o app na bandeja.
+  panels.forEach((p) => p.view.setVisible(!modalOpen && p.shown !== false && !(hidden && p.kind === 'stream')));
 }
 function registerIpc() {
   // Só a interface do próprio app (file://.../ui/index.html) pode falar com o processo principal.
@@ -1385,7 +1569,12 @@ function registerIpc() {
     activeProfile: state.activeProfile || null,
     reportAvailable: !!stats.reportAvailable,
     notifyLive: state.notifyLive !== false,
-    gameStats: stats.last,
+    gameStats: (panels.get('game') && panels.get('game').g.stats.last) || null,
+    accounts: accountsInfo(),
+    maxAccounts: MAX_ACCOUNTS,
+    hits: recentHits,
+    discordConnected: !!(ALERT_SERVER && state.alertSession),
+    ui: state.ui || {},
     split: state.split || (config.layout && config.layout.split) || 60,
     startedAt,
     version: app.getVersion(),
@@ -1432,7 +1621,7 @@ function registerIpc() {
       min: int(o && o.min, 0, 100000, cur.min),
       qty: int(o && o.qty, 1, 9999, cur.qty)
     };
-    autoBuyFails = 0; autoBuyLast = 0;
+    gamePanels().forEach((p) => { p.g.autoBuyFails = 0; p.g.autoBuyLast = 0; });
     saveState();
     log(`[compra] ${state.autoBuy.on ? `ligada: ${state.autoBuy.ball} abaixo de ${state.autoBuy.min}, compra ${state.autoBuy.qty}` : 'desligada'}`);
     return state.autoBuy;
@@ -1445,6 +1634,20 @@ function registerIpc() {
     return notifyPhone({ url, mention: true, title: 'Teste do PokeIdle Farm', description: 'Tudo certo! Os alertas de pokémon bom vão chegar aqui.', color: 0x53fc18 });
   });
   on('open-login', () => openLoginWindow());
+  handle('accounts-get', () => accountsInfo());
+  handle('accounts-add', () => addAccount());
+  handle('accounts-pause', (_e, id, on) => pauseAccount(String(id), !!on));
+  handle('accounts-remove', (_e, id) => removeAccount(String(id)));
+  on('accounts-login', (_e, id) => openAccountLogin(String(id)));
+  // preferências só de interface (visão, conta na tela, seção da barra lateral)
+  on('set-ui', (_e, o) => {
+    if (!o || typeof o !== 'object') return;
+    const ui = { ...(state.ui || {}) };
+    if (['one', 'grid'].includes(o.accView)) ui.accView = o.accView;
+    if (typeof o.account === 'string' && ACCOUNT_ID_RE.test(o.account)) ui.account = o.account;
+    if (['game', 'lives'].includes(o.section)) ui.section = o.section;
+    state.ui = ui; saveState();
+  });
   // Primeiro acesso: "já loguei" ou "prefiro não logar" → mostra o aviso final; depois reinicia.
   on('setup-done', (_e, skipped) => {
     log(`[setup] primeiro acesso concluído${skipped ? ' (sem login)' : ''}`);
@@ -1506,15 +1709,19 @@ function registerIpc() {
   });
 
 
+  // A interface manda a posição de cada página visível; o que ficou de fora (outra aba, outra tela) esconde.
   on('layout', (_e, rects) => {
-    for (const [id, r] of Object.entries(rects)) {
-      const p = panels.get(id);
-      if (!p || !r) continue;
+    if (!rects || typeof rects !== 'object') return;
+    for (const p of panels.values()) {
+      const r = rects[p.id];
+      p.shown = !!r && r.width > 1 && r.height > 1;
+      if (!p.shown) continue;
       p.view.setBounds({
         x: Math.round(r.x), y: Math.round(r.y),
         width: Math.max(0, Math.round(r.width)), height: Math.max(0, Math.round(r.height))
       });
     }
+    applyViewVisibility();
   });
 
   // Enquanto arrasta a divisória, esconde as páginas para o mouse não "cair" dentro delas.
@@ -1615,6 +1822,7 @@ app.whenReady().then(async () => {
   hardenSession(session.defaultSession);
   const ua = ses.getUserAgent().replace(/\s(Electron|pokeidle-farm)\/\S+/g, '');
   ses.setUserAgent(ua);
+  chromeUA = ua;
   app.userAgentFallback = ua;
 
   if (onboarding) { registerIpc(); openOnboarding(); return; }
@@ -1631,11 +1839,14 @@ app.whenReady().then(async () => {
   send('extensions', extensionsLoaded);
   win.webContents.on('did-finish-load', () => {
     send('extensions', extensionsLoaded);
+    send('accounts-changed', accountsInfo());
     panels.forEach(pushStatus);
     pushGlobal();
   });
 
   gamePanel.view.webContents.loadURL(gamePanel.url).catch(() => {});
+  for (const a of accounts()) if (a.id !== 'game' && !a.paused) await openAccount(a);
+  send('accounts-changed', accountsInfo());
   if (startInLoginMode) openLoginWindow(); // lives só abrem depois do login
   else streamPanels.forEach((p) => p.view.webContents.loadURL(p.url).catch(() => {}));
   startWatchdog();
@@ -1644,12 +1855,13 @@ app.whenReady().then(async () => {
   startNetworkWatch();
   startAutoUpdate();
   setInterval(pollSleeping, SLEEP_POLL_MS);
-  setInterval(sampleGameStats, 30000);
-  setInterval(checkCaptures, 10000);
+  setInterval(sampleAllGames, 30000);
+  setInterval(checkAllCaptures, 10000);
+  setInterval(rotateHiddenAccounts, 5 * 60000);
   setTimeout(syncCaptures, 60 * 1000);
   setInterval(syncCaptures, 5 * 60 * 1000);
   setInterval(pollCommands, 45 * 1000);
-  setTimeout(sampleGameStats, 15000);
+  setTimeout(sampleAllGames, 15000);
 });
 
 app.on('before-quit', () => { app.isQuitting = true; });

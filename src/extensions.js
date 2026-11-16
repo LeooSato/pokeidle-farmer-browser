@@ -44,7 +44,8 @@ function localFolders(id) {
   return roots.map((r) => path.join(r, id));
 }
 
-async function loadExtensions(ses, list, log = console.log) {
+// opts.download = false: só usa a cópia local/cache (contas extras usam a que a principal já baixou).
+async function loadExtensions(ses, list, log = console.log, opts = {}) {
   const api = ses.extensions && ses.extensions.loadExtension ? ses.extensions : ses;
   const cacheRoot = path.join(app.getPath('userData'), 'extensions');
   fs.mkdirSync(cacheRoot, { recursive: true });
@@ -54,7 +55,7 @@ async function loadExtensions(ses, list, log = console.log) {
     let dir = localFolders(ext.id).find((d) => readManifest(d));
     if (!dir) {
       dir = path.join(cacheRoot, ext.id);
-      try {
+      if (opts.download === false && readManifest(dir)) { /* usa o cache */ } else try {
         await download(ext.id, dir);
         log(`[ext] ${ext.name}: baixada da Chrome Web Store`);
       } catch (e) {

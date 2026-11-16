@@ -189,12 +189,14 @@ function cleanBuy(b) {
   return /^[\p{L}\p{N} .'()-]{2,40}$/u.test(name) ? { kind: b.kind, name } : null;
 }
 // /comprar item:<escolha> quantidade:<1..9999>. "auto" = a bola/potion ligada no automático do jogo.
-async function queueBuy(env, user, b, qty) {
+// Nick da conta do PokeIdle (multi-contas): letras, números, _ . - (até 30). Inválido vira null.
+const cleanAcc = (v) => { const a = String(v ?? '').trim(); return /^[\w.-]{1,30}$/.test(a) ? a : null; };
+async function queueBuy(env, user, b, qty, acc = null) {
   await schema(env);
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare('DELETE FROM commands WHERE at < ?1').bind(now - 24 * 3600 * 1000),
-    env.DB.prepare('INSERT INTO commands (user, type, kind, name, qty, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(user, 'buy', b.kind, b.name, qty, now)
+    env.DB.prepare('INSERT INTO commands (user, type, kind, name, qty, at, acc) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)').bind(user, 'buy', b.kind, b.name, qty, now, acc)
   ]);
   const seen = await env.DB.prepare('SELECT at FROM seen WHERE user = ?1').bind(user).first();
   return !!(seen && now - seen.at < 10 * 60 * 1000);
@@ -206,11 +208,14 @@ async function buyCommand(env, it) {
   const name = rest.join(':') || 'auto';
   const qty = Math.floor(Number(opt('quantidade')));
   const b = cleanBuy({ kind, name });
+  const rawAcc = opt('conta');
+  const acc = cleanAcc(rawAcc);
   const reply = (content) => json({ type: 4, data: { flags: 64, content } });
   if (!b || !(qty >= 1 && qty <= 9999)) return reply('Pedido inválido. Use por exemplo `/comprar item:Potion quantidade:1000`.');
+  if (rawAcc != null && String(rawAcc).trim() && !acc) return reply('Nick de conta inválido. Use o nick do PokeIdle, por exemplo `conta:sato_leo`.');
   if (!(await env.THREADS.get(user))) return reply('Conecte o Discord no PokeIdle Farm primeiro (tela Alertas › Conectar Discord).');
-  const online = await queueBuy(env, user, b, qty);
-  const what = b.name === 'auto' ? (b.kind === 'ball' ? 'da pokébola do automático' : 'da potion do automático') : `de ${b.name}`;
+  const online = await queueBuy(env, user, b, qty, acc);
+  const what = (b.name === 'auto' ? (b.kind === 'ball' ? 'da pokébola do automático' : 'da potion do automático') : `de ${b.name}`) + (acc ? ` na conta ${acc}` : '');
   return reply(online
     ? `🛒 Pedido enviado: ${qty.toLocaleString('pt-BR')} ${what}. O app compra em até 1 min e avisa na sua thread. Ele nunca gasta mais da metade do seu ouro.`
     : `⏳ Na fila: ${qty.toLocaleString('pt-BR')} ${what}. O app parece desligado; o pedido vale por 30 min.`);
@@ -232,6 +237,10 @@ async function schema(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS seen (user TEXT PRIMARY KEY, at INTEGER NOT NULL, ver TEXT)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS commands (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, type TEXT NOT NULL, kind TEXT, name TEXT, qty INTEGER, at INTEGER NOT NULL, done INTEGER DEFAULT 0)')
   ]);
+  // multi-contas: coluna acc (nick da conta). ALTER falha se já existe, então cada um isolado.
+  for (const t of ['captures', 'commands']) {
+    try { await env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN acc TEXT`).run(); } catch { /* já existe */ }
+  }
   schemaReady = true;
 }
 
@@ -253,15 +262,16 @@ async function captures(req, env) {
     t: num(c.t, now - KEEP_MS, now + 5 * 60 * 1000),
     name: String(c.name || '').replace(/[\u0000-\u001f<>@`*_~|]/g, '').trim().slice(0, 30),
     level: num(c.level, 1, 1000), nota: num(c.nota, 0, 10), iv: num(c.iv, 0, 999), q: num(c.q, 0, 100),
-    pot: num(String(c.pot ?? '').replace(/\D/g, ''), 0, 99), shiny: c.shiny === true ? 1 : 0
+    pot: num(String(c.pot ?? '').replace(/\D/g, ''), 0, 99), shiny: c.shiny === true ? 1 : 0, acc: cleanAcc(c.acc)
   })).filter((c) => /^[\w:.-]+$/.test(c.k) && c.t && c.name);
 
   await schema(env);
   const stmts = caps.map((c) => env.DB.prepare(
-    `INSERT INTO captures (user, k, t, name, level, nota, iv, q, pot, shiny) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+    `INSERT INTO captures (user, k, t, name, level, nota, iv, q, pot, shiny, acc) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
      ON CONFLICT(user, k) DO UPDATE SET nota = COALESCE(excluded.nota, captures.nota), iv = COALESCE(excluded.iv, captures.iv),
-       q = COALESCE(excluded.q, captures.q), pot = COALESCE(excluded.pot, captures.pot), shiny = MAX(excluded.shiny, captures.shiny)`
-  ).bind(ses.u, c.k, Math.round(c.t), c.name, c.level, c.nota, c.iv, c.q, c.pot, c.shiny));
+       q = COALESCE(excluded.q, captures.q), pot = COALESCE(excluded.pot, captures.pot), shiny = MAX(excluded.shiny, captures.shiny),
+       acc = COALESCE(excluded.acc, captures.acc)`
+  ).bind(ses.u, c.k, Math.round(c.t), c.name, c.level, c.nota, c.iv, c.q, c.pot, c.shiny, c.acc));
   stmts.push(env.DB.prepare('DELETE FROM captures WHERE user = ?1 AND t < ?2').bind(ses.u, now - KEEP_MS));
   stmts.push(env.DB.prepare('INSERT INTO seen (user, at, ver) VALUES (?1, ?2, ?3) ON CONFLICT(user) DO UPDATE SET at = excluded.at, ver = excluded.ver')
     .bind(ses.u, now, String(body.ver || '').slice(0, 20)));
@@ -303,7 +313,8 @@ async function interactions(req, env) {
     const user = String((it.member && it.member.user && it.member.user.id) || (it.user && it.user.id) || '');
     const opt = (it.data.options || []).find((o) => o.name === 'horas');
     const hours = Math.min(48, Math.max(1, Math.round(Number(opt && opt.value) || 6)));
-    const embed = await summary(env, user, hours);
+    const conta = cleanAcc(((it.data.options || []).find((o) => o.name === 'conta') || {}).value);
+    const embed = await summary(env, user, hours, conta);
     return json({ type: 4, data: { flags: 64, embeds: [embed], allowed_mentions: { parse: [] } } });
   }
   if (it.type === 2 && it.data && it.data.name === 'comprar') return await buyCommand(env, it);
@@ -333,21 +344,23 @@ async function commands(req, env) {
   if (!ses || !ses.u) return json({ ok: false, error: 'reconecte o Discord no app' }, 401);
   await schema(env);
   const now = Date.now();
-  const { results } = await env.DB.prepare('SELECT id, type, kind, name, qty FROM commands WHERE user = ?1 AND done = 0 AND at >= ?2 ORDER BY id LIMIT 5').bind(ses.u, now - 30 * 60 * 1000).all();
+  const { results } = await env.DB.prepare('SELECT id, type, kind, name, qty, acc FROM commands WHERE user = ?1 AND done = 0 AND at >= ?2 ORDER BY id LIMIT 5').bind(ses.u, now - 30 * 60 * 1000).all();
   if (results.length) await env.DB.prepare(`UPDATE commands SET done = 1 WHERE user = ?1 AND id IN (${results.map((_, i) => '?' + (i + 2)).join(',')})`).bind(ses.u, ...results.map((r) => r.id)).run();
   return json({ ok: true, commands: results });
 }
 
-async function summary(env, user, hours) {
+async function summary(env, user, hours, conta = null) {
   await schema(env);
   const now = Date.now();
   const since = now - hours * 3600 * 1000;
-  const { results: rows } = await env.DB.prepare('SELECT name, level, nota, iv, q, pot, shiny, t FROM captures WHERE user = ?1 AND t >= ?2 ORDER BY t').bind(user, since).all();
-  const last = await env.DB.prepare('SELECT MAX(t) AS t FROM captures WHERE user = ?1').bind(user).first();
+  const accSql = conta ? ' AND lower(acc) = lower(?3)' : '';
+  const bindAcc = (st, ...a) => (conta ? st.bind(...a, conta) : st.bind(...a));
+  const { results: rows } = await bindAcc(env.DB.prepare(`SELECT name, level, nota, iv, q, pot, shiny, t, acc FROM captures WHERE user = ?1 AND t >= ?2${accSql} ORDER BY t`), user, since).all();
+  const last = await bindAcc(env.DB.prepare(`SELECT MAX(t) AS t FROM captures WHERE user = ?1 AND t >= ?2${accSql}`), user, 0).first();
   const seen = await env.DB.prepare('SELECT at, ver FROM seen WHERE user = ?1').bind(user).first();
   const sec = (ms) => Math.floor(ms / 1000);
   const n = (v, d = 2) => (v == null ? '?' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: d }));
-  const embed = { title: `Resumo das últimas ${hours} h`, color: 0x53fc18, footer: { text: 'PokeIdle Farm' }, timestamp: new Date().toISOString() };
+  const embed = { title: `Resumo das últimas ${hours} h${conta ? ` · ${conta}` : ''}`, color: 0x53fc18, footer: { text: 'PokeIdle Farm' }, timestamp: new Date().toISOString() };
 
   if (!seen) {
     embed.color = 0xf5a524;
@@ -363,7 +376,7 @@ async function summary(env, user, hours) {
     if (online && idle > 45 * 60 * 1000) lines.push(`⚠️ Nada capturado há ${Math.round(idle / 60000)} min com o app ligado. O farm pode ter travado (Ctrl+R no jogo costuma resolver).`);
   }
   if (!rows.length) {
-    lines.push('', `Nenhuma captura nas últimas ${hours} h.`);
+    lines.push('', `Nenhuma captura nas últimas ${hours} h${conta ? ` na conta ${conta}` : ''}.`);
     embed.description = lines.join('\n');
     embed.color = 0xf5a524;
     return embed;
@@ -375,14 +388,29 @@ async function summary(env, user, hours) {
   const species = [...bySpecies].sort((a, b) => b[1] - a[1]);
   const fields = [{ name: 'Espécies', value: species.slice(0, 15).map(([s, c]) => `${s} ×${c}`).join('\n') + (species.length > 15 ? `\n…e mais ${species.length - 15}` : ''), inline: true }];
 
+  // várias contas no período: mostra quem capturou o quê
+  const accs = [...new Set(rows.map((r) => r.acc).filter(Boolean))];
+  const multi = !conta && accs.length > 1;
+  const tag = (r) => (multi && r.acc ? `[${r.acc}] ` : '');
+  if (multi) {
+    fields.push({
+      name: 'Por conta',
+      value: accs.map((a) => {
+        const mine = rows.filter((r) => r.acc === a);
+        const top = Math.max(...mine.map((r) => r.nota ?? -1));
+        return `**${a}**: ${mine.length} captura${mine.length > 1 ? 's' : ''}${top >= 0 ? ` · melhor nota ${n(top, 2)}` : ''}${mine.some((r) => r.shiny) ? ' · ✨' : ''}`;
+      }).join('\n').slice(0, 1024),
+      inline: false
+    });
+  }
   const best = [...rows].sort((a, b) => (b.nota ?? -1) - (a.nota ?? -1) || (b.iv ?? 0) - (a.iv ?? 0)).slice(0, 3);
   fields.push({
     name: 'Melhores',
-    value: best.map((r, i) => `${['🥇', '🥈', '🥉'][i]} ${r.shiny ? '✨ ' : ''}${r.name} Nv ${r.level ?? '?'}: nota **${n(r.nota, 2)}** · IV ${r.iv ?? '?'} · Q ${n(r.q, 3)} · P${r.pot ?? '?'} (<t:${sec(r.t)}:t>)`).join('\n'),
+    value: best.map((r, i) => `${['🥇', '🥈', '🥉'][i]} ${tag(r)}${r.shiny ? '✨ ' : ''}${r.name} Nv ${r.level ?? '?'}: nota **${n(r.nota, 2)}** · IV ${r.iv ?? '?'} · Q ${n(r.q, 3)} · P${r.pot ?? '?'} (<t:${sec(r.t)}:t>)`).join('\n'),
     inline: false
   });
   const shinies = rows.filter((r) => r.shiny);
-  fields.push({ name: 'Shiny', value: shinies.length ? shinies.slice(0, 10).map((r) => `✨ ${r.name} Nv ${r.level ?? '?'} às <t:${sec(r.t)}:t>`).join('\n') : 'Nenhum', inline: true });
+  fields.push({ name: 'Shiny', value: shinies.length ? shinies.slice(0, 10).map((r) => `✨ ${tag(r)}${r.name} Nv ${r.level ?? '?'} às <t:${sec(r.t)}:t>`).join('\n') : 'Nenhum', inline: true });
   const notas = rows.filter((r) => r.nota != null).map((r) => r.nota);
   if (notas.length) fields.push({ name: 'Nota média', value: n(notas.reduce((a, b) => a + b, 0) / notas.length, 2), inline: true });
   embed.fields = fields;

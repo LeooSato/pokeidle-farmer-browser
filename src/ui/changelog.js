@@ -1,6 +1,17 @@
 // Lista do que mudou em cada versão (mais nova primeiro). Aparece na tela "Novidades".
 window.CHANGELOG = [
   {
+    version: '1.0.17',
+    date: '16/11/2026',
+    items: [
+      'Visual novo: barra lateral (Jogo, Lives, Alertas, Relatório, Configurações), painel com XP/h, ouro/h, itens e as melhores capturas do dia.',
+      'Várias contas do PokeIdle (até 4, o limite do jogo). Cada conta tem login, cookies e extensões separados. Troque pelas abas em cima do jogo ou veja todas numa grade 2×2.',
+      'Contas que não estão na tela continuam farmando sem ser desenhadas. Pausar uma conta fecha a página dela e libera a memória.',
+      'Avisos do Discord com o nick da conta no título, todos na mesma thread. /resumo separa por conta (e aceita conta:nick) e /comprar aceita conta:nick.',
+      'As lives agora ficam na tela Lives da barra lateral. Elas continuam rodando e contando enquanto você está no jogo.'
+    ]
+  },
+  {
     version: '1.0.16',
     date: '15/11/2026',
     items: [

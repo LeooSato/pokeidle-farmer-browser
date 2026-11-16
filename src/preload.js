@@ -38,8 +38,14 @@ contextBridge.exposeInMainWorld('farm', {
   autoBuyGet: () => ipcRenderer.invoke('autobuy-get'),
   autoBuySet: (o) => ipcRenderer.invoke('autobuy-set', o),
   toggleWatchdog: () => ipcRenderer.send('toggle-watchdog'),
+  accountsGet: () => ipcRenderer.invoke('accounts-get'),
+  accountsAdd: () => ipcRenderer.invoke('accounts-add'),
+  accountsPause: (id, on) => ipcRenderer.invoke('accounts-pause', id, on),
+  accountsRemove: (id) => ipcRenderer.invoke('accounts-remove', id),
+  accountsLogin: (id) => ipcRenderer.send('accounts-login', id),
+  setUi: (o) => ipcRenderer.send('set-ui', o),
   on: (channel, fn) => {
-    const allowed = ['panel-status', 'extensions', 'window-state', 'global-status', 'streams-changed', 'toast', 'metrics', 'game-stats', 'toggle-focus', 'shortcut'];
+    const allowed = ['panel-status', 'extensions', 'window-state', 'global-status', 'streams-changed', 'toast', 'metrics', 'game-stats', 'toggle-focus', 'shortcut', 'accounts-changed', 'capture'];
     if (allowed.includes(channel)) ipcRenderer.on(channel, (_e, data) => fn(data));
   }
 });

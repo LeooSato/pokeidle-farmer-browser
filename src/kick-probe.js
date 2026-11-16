@@ -98,8 +98,11 @@ const gameStats = `(() => {
 
   // XP do treinador: "atual / total xp"
   let xp = null, xpMax = null;
-  const xpTxt = byId(/xp|exp/i);
   const xpRe = /^([\\d.,]+)\\s*\\/\\s*([\\d.,]+)\\s*xp$/i;
+  // #tr-xp-fill (a barra) vem antes de #tr-xp-txt: pega o id cujo texto é "atual / total xp".
+  // Assim funciona também com a conta escondida (sem depender de elemento visível na tela).
+  const xpKey = Object.keys(ids).find((k) => /xp|exp/i.test(k) && xpRe.test(ids[k]));
+  const xpTxt = xpKey ? ids[xpKey] : null;
   const xpEl = xpTxt && xpRe.test(xpTxt) ? null : leaves
     .filter((e) => xpRe.test(e.textContent.trim()))
     .map((e) => ({ e, r: visible(e) })).filter((x) => x.r)
