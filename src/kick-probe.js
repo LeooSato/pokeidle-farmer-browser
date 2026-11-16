@@ -292,6 +292,41 @@ const gameBuyItem = (kind, name, qty) => `(async () => {
   }
 })()`;
 
+// Nota da captura sem depender do painel "Capturas" estar na tela: usa o módulo do próprio jogo
+// (/shared/nota-pokemon.mjs) com as capturas do histórico (localStorage). A assinatura da função
+// não é pública, então testa as exportadas e só aceita a que bate com a nota do painel.
+// info=true devolve a lista de exports (com o começo do código) pro log.
+const gameHistNota = (fnName, info) => `(async () => {
+  let m;
+  try { m = await import('/shared/nota-pokemon.mjs'); } catch (e) { return { error: 'import: ' + (e && e.message) }; }
+  const out = { exports: [] };
+  if (${info ? 'true' : 'false'}) {
+    out.exports = Object.keys(m).map((k) => ({ k, t: typeof m[k], src: typeof m[k] === 'function' ? String(m[k]).slice(0, 1200) : (() => { try { return JSON.stringify(m[k]).slice(0, 200); } catch (e) { return String(m[k]).slice(0, 200); } })() }));
+  }
+  const hist = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!/^capturas-hist:/.test(key)) continue;
+    try { const l = JSON.parse(localStorage.getItem(key) || '[]'); if (Array.isArray(l)) hist.push(...l.slice(0, 60)); } catch (e) {}
+  }
+  const num = (r) => typeof r === 'number' ? r : r && typeof r === 'object' ? [r.nota, r.valor, r.total, r.score].find((x) => typeof x === 'number') : undefined;
+  const fns = Object.keys(m).filter((k) => typeof m[k] === 'function');
+  const pick = ${JSON.stringify(fnName || '')};
+  const tryFn = (k, c) => {
+    const f = m[k];
+    const alt = { ...c, especie: c.speciesId, especieId: c.speciesId, iv: c.ivs, qualidade: c.quality, nivel: c.level };
+    for (const arg of [c, alt]) { try { const v = num(f(arg)); if (Number.isFinite(v)) return v; } catch (e) {} }
+    return undefined;
+  };
+  out.rows = hist.filter((c) => c && c.em && c.id != null).map((c) => {
+    const row = { k: c.em + ':' + c.id, t: Number(c.em), name: String(c.nome || ''), level: c.level, shiny: c.shiny === true,
+      iv: c.ivs && typeof c.ivs === 'object' ? Object.values(c.ivs).reduce((a, b) => a + (Number(b) || 0), 0) : null, q: c.quality, pot: c.potencia, by: {} };
+    for (const k of (pick ? [pick] : fns)) { if (!m[k]) continue; const v = tryFn(k, c); if (v !== undefined) row.by[k] = Math.round(v * 1000) / 1000; }
+    return row;
+  });
+  return out;
+})()`;
+
 const gameBuyBall = (name, qty) => gameBuyItem('ball', name, qty);
 
-module.exports = { gameCaptures, gameCaptureHist, gameBuyBall, gameBuyItem, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };
+module.exports = { gameCaptures, gameCaptureHist, gameHistNota, gameBuyBall, gameBuyItem, gameItems, kickCookies, lowestQualityFor, gameStats, probe: kickProbe, kickProbe, twitchProbe, twitchClaim, probeFor, lowestQuality, gameUser };

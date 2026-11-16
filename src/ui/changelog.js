@@ -4,7 +4,8 @@ window.CHANGELOG = [
     version: '1.0.16',
     date: '15/11/2026',
     items: [
-      'Corrigido: pokémon acima da nota mínima que não avisavam. A nota às vezes aparece alguns segundos depois da captura no painel, e o app descartava a captura antes de a nota chegar. Agora ele espera a nota.'
+      'Corrigido: pokémon acima da nota mínima que não avisavam. A nota às vezes aparece alguns segundos depois da captura no painel, e o app descartava a captura antes de a nota chegar. Agora ele espera a nota.',
+      'Avisos de captura funcionam mesmo com o histórico de capturas fora da tela: o app calcula a nota com a mesma fórmula do jogo, a partir do histórico que o jogo salva. Ele só passa a usar a fórmula depois de conferir que ela bate com o painel em pelo menos 3 capturas.'
     ]
   },
   {

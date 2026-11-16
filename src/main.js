@@ -665,8 +665,12 @@ async function checkCaptures() {
   capBusy = true;
   try {
     let list;
-    try { list = await p.view.webContents.executeJavaScript(kick.gameCaptures(false), true); } catch { return; }
-    if (!Array.isArray(list)) return;
+    try { list = await p.view.webContents.executeJavaScript(kick.gameCaptures(false), true); } catch { list = null; }
+    // Painel "Capturas" fora da tela: usa o histórico do jogo com a nota calculada pelo módulo do jogo.
+    const hist = await histWithNota(p, Array.isArray(list) ? list : []);
+    if (!Array.isArray(list)) list = hist;
+    else { const have = new Set(list.map((c) => c.k)); list = list.concat(hist.filter((c) => !have.has(c.k))); }
+    if (!list.length) return;
     queueCaptures(list);
     const capTs = (c) => Number(String(c.k).split(':')[0]);
     // O selo de nota (.pk-selo-n) é posto pela extensão /rate e pode chegar depois da linha.
@@ -739,6 +743,41 @@ async function syncCaptures() {
   } catch (err) {
     log(`[resumo] falha ao sincronizar capturas: ${err.message}`);
   } finally { capSyncBusy = false; }
+}
+// Calibra qual função do /shared/nota-pokemon.mjs dá a mesma nota do painel. Só depois de bater
+// em 3 capturas (e nenhuma diferente) passa a usar a nota calculada quando o painel não está na tela.
+let notaLogged = false, notaLastRun = 0, notaCache = [];
+async function histWithNota(p, panel) {
+  if (!kick.gameHistNota) return [];
+  const now = Date.now();
+  const calibrated = !!state.notaFn;
+  if (now - notaLastRun < (calibrated ? 10000 : 120000)) return calibrated ? notaCache : [];
+  notaLastRun = now;
+  let r;
+  try { r = await p.view.webContents.executeJavaScript(kick.gameHistNota(state.notaFn || '', !notaLogged), true); } catch (err) { r = { error: err.message }; }
+  if (!r || r.error) { if (!notaLogged) { notaLogged = true; log(`[nota] módulo do jogo indisponível: ${r && r.error}`); } return []; }
+  if (!notaLogged) {
+    notaLogged = true;
+    log(`[nota] exports de nota-pokemon.mjs: ${JSON.stringify((r.exports || []).map((e) => ({ k: e.k, t: e.t })))}`);
+    for (const e of (r.exports || []).filter((e) => e.t === 'function').slice(0, 8)) log(`[nota] ${e.k}: ${String(e.src).replace(/\s+/g, ' ').slice(0, 900)}`);
+    const sample = (r.rows || []).slice(0, 3).map((x) => ({ k: x.k, by: x.by }));
+    log(`[nota] amostra: ${JSON.stringify(sample)}`);
+  }
+  const rows = r.rows || [];
+  const panelNota = new Map(panel.filter((c) => c.nota != null).map((c) => [c.k, c.nota]));
+  const cands = state.notaFn ? [state.notaFn] : [...new Set(rows.flatMap((x) => Object.keys(x.by)))];
+  for (const fn of cands) {
+    let ok = 0, bad = 0;
+    for (const x of rows) { const pn = panelNota.get(x.k); if (pn == null || x.by[fn] == null) continue; if (Math.abs(x.by[fn] - pn) <= 0.002) ok++; else bad++; }
+    if (!state.notaFn && ok >= 3 && bad === 0) { state.notaFn = fn; saveState(); log(`[nota] usando ${fn}() do jogo pra nota (bateu em ${ok} capturas)`); break; }
+    if (state.notaFn === fn && bad >= 2 && bad > ok) { log(`[nota] ${fn}() parou de bater com o painel (${bad} diferentes), desligando`); state.notaFn = undefined; saveState(); }
+  }
+  if (!state.notaFn) return [];
+  notaCache = rows.filter((x) => x.by[state.notaFn] != null).map((x) => ({
+    k: x.k, t: x.t, name: x.name, level: x.level, nota: x.by[state.notaFn], iv: x.iv, ivMax: 192, q: x.q,
+    pot: x.pot != null ? `P${x.pot}` : '', shiny: x.shiny, time: new Date(x.t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), src: 'hist'
+  }));
+  return notaCache;
 }
 async function captureAlert(c, img) {
   const head = `${c.shiny ? '✨ Shiny ' : ''}${c.name}${c.level ? ` Nv ${c.level}` : ''}`;
